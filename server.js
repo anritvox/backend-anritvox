@@ -14,15 +14,15 @@ const authRoutes = require("./routes/authRoutes");
 
 const app = express();
 
-// app.use(cors());
-app.use(
-  cors({
-    origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  })
-);
+app.use(cors());
+// app.use(
+//   cors({
+//     origin: "*",
+//     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+//   })
+// );
 
-app.options(/.*/, cors());
+// app.options(/.*/, cors());
 
 // app.use("/uploads", express.static("uploads"));
 
@@ -33,9 +33,6 @@ app.use("/api/warranty", warrantyRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/auth", authRoutes);
 
-// app.options("*", cors());
-
-// Health-check to verify DB connectivity
 app.get("/api/health", async (req, res) => {
   try {
     const [rows] = await pool.query("SELECT 1 + 1 AS result");
