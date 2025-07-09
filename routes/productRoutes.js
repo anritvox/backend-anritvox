@@ -21,8 +21,8 @@ router.get("/", async (req, res) => {
     const products = await getAllProducts();
 
     for (const p of products) {
-      console.log(`Raw DB values for product ${p.id}:`, p.images);
-      // 1) Normalize to object keys
+      // console.log(`Raw DB values for product ${p.id}:`, p.images);
+
       const keys = p.images.map((img) => {
         if (img.startsWith("http")) {
           // existing full-URL entry → extract pathname
@@ -50,7 +50,7 @@ router.get("/:id", async (req, res) => {
     const product = await getProductById(req.params.id);
     if (!product) return res.status(404).json({ message: "Not found" });
 
-    console.log("Raw DB values for single product:", product.images);
+    // console.log("Raw DB values for single product:", product.images);
     const keys = product.images.map((img) => {
       if (img.startsWith("http")) {
         const url = new URL(img);
