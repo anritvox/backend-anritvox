@@ -16,12 +16,29 @@ const app = express();
 app.use(express.json());
 
 // app.use(cors());
-app.use(
-  cors({
-    origin: "*",
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  })
-);
+// app.use(
+//   cors({
+//     origin: "*",
+//     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+//   })
+// );
+// Allow CORS from anywhere, with all headers & methods
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header(
+    "Access-Control-Allow-Methods",
+    "GET,POST,PUT,PATCH,DELETE,OPTIONS"
+  );
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+  );
+  // Some buggy browsers choke on 204, so return 200 for OPTIONS
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
 
 // app.use("/uploads", express.static("uploads"));
 
