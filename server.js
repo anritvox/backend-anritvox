@@ -1,4 +1,3 @@
-// backend/server.js
 require("dotenv").config();
 
 const express = require("express");
@@ -16,13 +15,7 @@ const app = express();
 app.use(express.json());
 
 // app.use(cors());
-// app.use(
-//   cors({
-//     origin: "*",
-//     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-//   })
-// );
-// Allow CORS from anywhere, with all headers & methods
+
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header(
@@ -33,7 +26,6 @@ app.use((req, res, next) => {
     "Access-Control-Allow-Headers",
     "Origin, X-Requested-With, Content-Type, Accept, Authorization"
   );
-  // Some buggy browsers choke on 204, so return 200 for OPTIONS
   if (req.method === "OPTIONS") {
     return res.sendStatus(200);
   }
