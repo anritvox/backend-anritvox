@@ -14,8 +14,7 @@ const authRoutes = require("./routes/authRoutes");
 const app = express();
 app.use(express.json());
 
-// app.use(cors());
-
+// CORS setup
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header(
@@ -32,14 +31,17 @@ app.use((req, res, next) => {
   next();
 });
 
-// app.use("/uploads", express.static("uploads"));
-
-app.use("/api/categories", categoryRoutes);
-app.use("/api/subcategories", subcategoryRoutes);
-app.use("/api/products", productRoutes);
-app.use("/api/warranty", warrantyRoutes);
-app.use("/api/contact", contactRoutes);
-app.use("/api/auth", authRoutes);
+// ── Keep-alive ping to prevent idle DB disconnects ──
+setInterval(() => {
+  pool
+    .query("SELECT 1")
+    .then(() => {
+      // console.log("DB keep-alive ping successful");
+    })
+    .catch((err) => {
+      console.error("DB keep-alive error:", err);
+    });
+}, 4 * 60 * 1000); // every 4 minutes
 
 // Health-check to verify DB connectivity
 app.get("/api/health", async (req, res) => {
@@ -51,6 +53,14 @@ app.get("/api/health", async (req, res) => {
     res.status(500).json({ status: "error", message: err.message });
   }
 });
+
+// API routes
+app.use("/api/categories", categoryRoutes);
+app.use("/api/subcategories", subcategoryRoutes);
+app.use("/api/products", productRoutes);
+app.use("/api/warranty", warrantyRoutes);
+app.use("/api/contact", contactRoutes);
+app.use("/api/auth", authRoutes);
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
