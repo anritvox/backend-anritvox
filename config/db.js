@@ -2,7 +2,6 @@
 const mysql = require("mysql2");
 require("dotenv").config();
 
-// Create a connection pool with TCP keep-alive enabled
 const pool = mysql
   .createPool({
     host: process.env.DB_HOST,
@@ -13,12 +12,12 @@ const pool = mysql
     connectionLimit: 10,
     queueLimit: 0,
 
-    // ── Enable TCP keep-alive so Railway doesn’t drop idle sockets ──
+    // Keep-alive so Railway won’t drop idle sockets
     enableKeepAlive: true,
-    keepAliveInitialDelay: 60000, // first ping after 60 s idle
+    keepAliveInitialDelay: 600000, // ping after 60s idle
 
-    // Optionally increase acquireTimeout if you see “Timeout acquiring connection”:
-    acquireTimeout: 10000, // 10 seconds
+    // If you need to adjust how long to wait when *connecting*:
+    connectTimeout: 10000, // 10s
   })
   .promise();
 
