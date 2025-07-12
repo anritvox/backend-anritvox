@@ -119,6 +119,9 @@
 // };
 const pool = require("../config/db");
 
+// ✅ CloudFront base URL to serve images via CDN (replace this if needed)
+const CLOUDFRONT_BASE_URL = "https://d11ubw4cywjyjm.cloudfront.net";
+
 // List all products with category & subcategory names, including an images array
 const getAllProducts = async () => {
   const [rows] = await pool.query(
@@ -139,13 +142,17 @@ const getAllProducts = async () => {
      ORDER BY p.created_at DESC`
   );
 
-  // Fetch images for each product
   for (const product of rows) {
     const [imgs] = await pool.query(
       `SELECT file_path FROM product_images WHERE product_id = ?`,
       [product.id]
     );
-    product.images = imgs.map((r) => r.file_path);
+
+    // 🔁 OLD: direct path (not CDN)
+    // product.images = imgs.map((r) => r.file_path);
+
+    // ✅ NEW: use CloudFront CDN
+    product.images = imgs.map((r) => `${CLOUDFRONT_BASE_URL}/${r.file_path}`);
   }
 
   return rows;
@@ -161,13 +168,20 @@ const getProductById = async (id) => {
      WHERE id = ?`,
     [id]
   );
+
   if (!product) return null;
 
   const [images] = await pool.query(
     `SELECT file_path FROM product_images WHERE product_id = ?`,
     [id]
   );
-  product.images = images.map((r) => r.file_path);
+
+  // 🔁 OLD:
+  // product.images = images.map((r) => r.file_path);
+
+  // ✅ NEW:
+  product.images = images.map((r) => `${CLOUDFRONT_BASE_URL}/${r.file_path}`);
+
   return product;
 };
 
@@ -175,12 +189,14 @@ const getProductById = async (id) => {
 const createProduct = async (data) => {
   const { name, description, price, quantity, category_id, subcategory_id } =
     data;
+
   const [result] = await pool.query(
     `INSERT INTO products
        (name, description, price, quantity, category_id, subcategory_id)
      VALUES (?, ?, ?, ?, ?, ?)`,
     [name, description, price, quantity, category_id, subcategory_id || null]
   );
+
   return result.insertId;
 };
 
@@ -214,7 +230,6 @@ const updateProduct = async (id, data) => {
     serials,
   } = data;
 
-  // 1) Update product table
   await pool.query(
     `UPDATE products
        SET name = ?, description = ?, price = ?, quantity = ?, category_id = ?, subcategory_id = ?
@@ -230,18 +245,15 @@ const updateProduct = async (id, data) => {
     ]
   );
 
-  // 2) If new serials provided, reset serial_numbers and warranty registrations
+  // If serials array provided, reset all serials & warranty
   if (Array.isArray(serials)) {
-    // a) Delete any warranty registrations for this product
     await pool.query(
       `DELETE FROM warranty_registrations WHERE product_id = ?`,
       [id]
     );
 
-    // b) Delete existing serial numbers
     await pool.query(`DELETE FROM serial_numbers WHERE product_id = ?`, [id]);
 
-    // c) Insert new serials marked unused
     if (serials.length) {
       const values = serials.map((s) => [id, s.trim().toUpperCase(), 0]);
       await pool.query(
@@ -254,18 +266,11 @@ const updateProduct = async (id, data) => {
 
 // Delete a product and all associated data
 const deleteProduct = async (id) => {
-  // 1) Remove warranty registrations
   await pool.query(`DELETE FROM warranty_registrations WHERE product_id = ?`, [
     id,
   ]);
-
-  // 2) Remove serial numbers
   await pool.query(`DELETE FROM serial_numbers WHERE product_id = ?`, [id]);
-
-  // 3) Remove product images
   await pool.query(`DELETE FROM product_images WHERE product_id = ?`, [id]);
-
-  // 4) Delete the product itself
   await pool.query(`DELETE FROM products WHERE id = ?`, [id]);
 };
 
