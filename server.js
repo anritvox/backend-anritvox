@@ -14,12 +14,13 @@ const app = express();
 app.use(express.json());
 
 // ✅ Secure CORS setup
-const corsOptions = {
-  origin: "https://www.anritvox.com",
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-};
-app.use(cors(corsOptions));
+// const corsOptions = {
+//   origin: "https://www.anritvox.com",
+//   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+//   allowedHeaders: ["Content-Type", "Authorization"],
+// };
+// app.use(cors(corsOptions));
+app.use(cors());
 
 // ✅ Keep-alive DB ping
 setInterval(() => {
