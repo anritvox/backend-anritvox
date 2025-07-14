@@ -13,8 +13,8 @@ const pool = mysql
     queueLimit: 0,
 
     // Keep-alive so Railway won’t drop idle sockets
-    enableKeepAlive: true,
-    keepAliveInitialDelay: 600000, // ping after 60s idle
+    // enableKeepAlive: true,
+    // keepAliveInitialDelay: 600000, // ping after 60s idle
 
     // If you need to adjust how long to wait when *connecting*:
     connectTimeout: 10000, // 10s

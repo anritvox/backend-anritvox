@@ -1,202 +1,7 @@
-// const express = require("express");
-// const router = express.Router();
-// const { upload, presign } = require("../config/s3Upload");
-
-// const {
-//   getAllProducts,
-//   getProductById,
-//   createProduct,
-//   addProductImage,
-//   addSerialNumber,
-//   updateProduct,
-//   deleteProduct,
-// } = require("../models/productModel");
-// const authMiddleware = require("../middleware/authMiddleware");
-
-// // GET /api/products
-// // Respond with product list, images converted to presigned URLs
-// router.get("/", async (req, res) => {
-//   // console.log("▶️ HIT GET /api/products");
-//   try {
-//     const products = await getAllProducts();
-
-//     for (const p of products) {
-//       // console.log(`Raw DB values for product ${p.id}:`, p.images);
-
-//       const keys = p.images.map((img) => {
-//         if (img.startsWith("http")) {
-//           // existing full-URL entry → extract pathname
-//           const url = new URL(img);
-//           return url.pathname.slice(1); // removes leading '/'
-//         }
-//         return img; // already a key
-//       });
-
-//       // 2) Generate signed URLs
-//       p.images = await Promise.all(keys.map((key) => presign(key)));
-//     }
-
-//     res.json(products);
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ message: "Server error" });
-//   }
-// });
-
-// // GET /api/products/:id
-// router.get("/:id", async (req, res) => {
-//   // console.log(`▶️ HIT GET /api/products/${req.params.id}`);
-//   try {
-//     const product = await getProductById(req.params.id);
-//     if (!product) return res.status(404).json({ message: "Not found" });
-
-//     // console.log("Raw DB values for single product:", product.images);
-//     const keys = product.images.map((img) => {
-//       if (img.startsWith("http")) {
-//         const url = new URL(img);
-//         return url.pathname.slice(1);
-//       }
-//       return img;
-//     });
-//     product.images = await Promise.all(keys.map((key) => presign(key)));
-
-//     res.json(product);
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ message: "Server error" });
-//   }
-// });
-
-// // POST /api/products
-// // multipart/form-data with images[], serials JSON
-// router.post(
-//   "/",
-//   authMiddleware,
-//   upload.array("images", 10),
-//   async (req, res) => {
-//     try {
-//       const {
-//         name,
-//         description,
-//         price,
-//         quantity,
-//         category_id,
-//         subcategory_id,
-//       } = req.body;
-
-//       // Parse serials array
-//       let serials = [];
-//       try {
-//         serials = JSON.parse(req.body.serials || "[]");
-//       } catch {
-//         return res.status(400).json({ message: "Invalid serials format" });
-//       }
-
-//       // 1) Create product record
-//       const productId = await createProduct({
-//         name,
-//         description,
-//         price,
-//         quantity,
-//         category_id,
-//         subcategory_id,
-//       });
-
-//       // 2) Store image keys
-//       for (const file of req.files) {
-//         await addProductImage(productId, file.key);
-//       }
-
-//       // 3) Store serial numbers
-//       for (let s of serials) {
-//         s = s.trim().toUpperCase();
-//         if (!/^[A-Z0-9]+$/.test(s)) {
-//           return res.status(400).json({ message: `Invalid serial: ${s}` });
-//         }
-//         await addSerialNumber(productId, s);
-//       }
-
-//       res.status(201).json({ id: productId });
-//     } catch (err) {
-//       console.error("Error creating product:", err);
-//       res.status(500).json({ message: "Server error" });
-//     }
-//   }
-// );
-
-// // PUT /api/products/:id
-// // Update fields, add new images/serials
-// router.put(
-//   "/:id",
-//   authMiddleware,
-//   upload.array("images", 10),
-//   async (req, res) => {
-//     try {
-//       const {
-//         name,
-//         description,
-//         price,
-//         quantity,
-//         category_id,
-//         subcategory_id,
-//       } = req.body;
-//       const productId = req.params.id;
-
-//       // 1) Update core fields
-//       await updateProduct(productId, {
-//         name,
-//         description,
-//         price,
-//         quantity,
-//         category_id,
-//         subcategory_id,
-//       });
-
-//       // 2) Save any new images
-//       for (const file of req.files) {
-//         await addProductImage(productId, file.key);
-//       }
-
-//       // 3) Parse and add new serials if provided
-//       if (req.body.serials) {
-//         let serials = [];
-//         try {
-//           serials = JSON.parse(req.body.serials);
-//         } catch {
-//           return res.status(400).json({ message: "Invalid serials format" });
-//         }
-//         for (let s of serials) {
-//           s = s.trim().toUpperCase();
-//           if (!/^[A-Z0-9]+$/.test(s)) {
-//             return res.status(400).json({ message: `Invalid serial: ${s}` });
-//           }
-//           await addSerialNumber(productId, s);
-//         }
-//       }
-
-//       res.json({ id: productId });
-//     } catch (err) {
-//       console.error("Error updating product:", err);
-//       res.status(500).json({ message: "Server error" });
-//     }
-//   }
-// );
-
-// // DELETE /api/products/:id
-// router.delete("/:id", authMiddleware, async (req, res) => {
-//   try {
-//     await deleteProduct(req.params.id);
-//     res.status(204).end();
-//   } catch (err) {
-//     console.error("Error deleting product:", err);
-//     res.status(500).json({ message: "Server error" });
-//   }
-// });
-
-// module.exports = router;
 const express = require("express");
 const router = express.Router();
 const { upload, presign } = require("../config/s3Upload");
+const pool = require("../config/db");
 const {
   getAllProducts,
   getProductById,
@@ -208,7 +13,7 @@ const {
 } = require("../models/productModel");
 const authMiddleware = require("../middleware/authMiddleware");
 
-// Helper to convert DB image keys into pre-signed S3 URLs
+// Helper: convert stored keys or URLs into pre-signed URLs
 const convertImagesToSignedUrls = async (images) => {
   const keys = images.map((img) => {
     if (img.startsWith("http")) {
@@ -227,10 +32,12 @@ router.get("/", async (req, res) => {
     for (const p of products) {
       p.images = await convertImagesToSignedUrls(p.images);
     }
-    res.json(products);
+    return res.json(products);
   } catch (err) {
-    console.error("Error in GET /api/products:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error("Error fetching products:", err);
+    return res
+      .status(500)
+      .json({ error: "Unable to load products. Please try again later." });
   }
 });
 
@@ -238,13 +45,16 @@ router.get("/", async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     const product = await getProductById(req.params.id);
-    if (!product) return res.status(404).json({ message: "Not found" });
-
+    if (!product) {
+      return res.status(404).json({ error: "Product not found." });
+    }
     product.images = await convertImagesToSignedUrls(product.images);
-    res.json(product);
+    return res.json(product);
   } catch (err) {
-    console.error(`Error in GET /api/products/${req.params.id}:`, err);
-    res.status(500).json({ message: "Server error" });
+    console.error("Error fetching product:", err);
+    return res
+      .status(500)
+      .json({ error: "Unable to load product. Please try again later." });
   }
 });
 
@@ -254,49 +64,83 @@ router.post(
   authMiddleware,
   upload.array("images", 10),
   async (req, res) => {
+    let productId;
     try {
-      const {
-        name,
-        description,
-        price,
-        quantity,
-        category_id,
-        subcategory_id,
-      } = req.body;
-
-      // Parse serials array
+      // Parse serials
       let serials = [];
       try {
         serials = JSON.parse(req.body.serials || "[]");
       } catch {
-        return res.status(400).json({ message: "Invalid serials format" });
+        return res.status(400).json({ error: "Invalid serials format." });
       }
 
-      const productId = await createProduct({
+      // Clean & validate
+      const cleaned = serials.map((s) => s.trim().toUpperCase());
+      const invalid = cleaned.filter((s) => !/^[A-Z0-9]+$/.test(s));
+      const dupes = cleaned.filter((s, i) => cleaned.indexOf(s) !== i);
+      if (invalid.length) {
+        return res.status(400).json({
+          error: `Invalid serial(s): ${[...new Set(invalid)].join(", ")}.`,
+        });
+      }
+      if (dupes.length) {
+        return res.status(400).json({
+          error: `Duplicate serial(s) in upload: ${[...new Set(dupes)].join(
+            ", "
+          )}.`,
+        });
+      }
+
+      // Determine quantity
+      const quantityToStore =
+        cleaned.length > 0 ? cleaned.length : Number(req.body.quantity) || 0;
+
+      // Create product record
+      const { name, description, price, category_id, subcategory_id } =
+        req.body;
+      productId = await createProduct({
         name,
         description,
         price,
-        quantity,
+        quantity: quantityToStore,
         category_id,
-        subcategory_id,
+        subcategory_id: subcategory_id || null,
       });
 
+      // Add images
       for (const file of req.files) {
         await addProductImage(productId, file.key);
       }
 
-      for (let s of serials) {
-        s = s.trim().toUpperCase();
-        if (!/^[A-Z0-9]+$/.test(s)) {
-          return res.status(400).json({ message: `Invalid serial: ${s}` });
-        }
+      // Add serial numbers
+      for (const s of cleaned) {
         await addSerialNumber(productId, s);
       }
 
-      res.status(201).json({ id: productId });
+      return res.status(201).json({ id: productId });
     } catch (err) {
       console.error("Error creating product:", err);
-      res.status(500).json({ message: "Server error" });
+      // Rollback created product on error
+      if (productId) {
+        try {
+          await deleteProduct(productId);
+        } catch (cleanupErr) {
+          console.error("Cleanup failed:", cleanupErr);
+        }
+      }
+      // Handle duplicate entry
+      if (err.code === "ER_DUP_ENTRY") {
+        const match = err.sqlMessage.match(/Duplicate entry '(.+?)'/);
+        const dupSerial = match ? match[1] : null;
+        return res.status(400).json({
+          error: dupSerial
+            ? `Serial number '${dupSerial}' already exists. Please use a unique serial.`
+            : "Duplicate serial number error.",
+        });
+      }
+      return res
+        .status(500)
+        .json({ error: "Unable to create product. Please try again." });
     }
   }
 );
@@ -308,6 +152,34 @@ router.put(
   upload.array("images", 10),
   async (req, res) => {
     try {
+      const productId = req.params.id;
+
+      // Parse & validate serials
+      let serials = [];
+      if (req.body.serials) {
+        try {
+          serials = JSON.parse(req.body.serials);
+        } catch {
+          return res.status(400).json({ error: "Invalid serials format." });
+        }
+        const cleaned = serials.map((s) => s.trim().toUpperCase());
+        const invalid = cleaned.filter((s) => !/^[A-Z0-9]+$/.test(s));
+        const dupes = cleaned.filter((s, i) => cleaned.indexOf(s) !== i);
+        if (invalid.length) {
+          return res.status(400).json({
+            error: `Invalid serial(s): ${[...new Set(invalid)].join(", ")}.`,
+          });
+        }
+        if (dupes.length) {
+          return res.status(400).json({
+            error: `Duplicate serial(s): ${[...new Set(dupes)].join(", ")}.`,
+          });
+        }
+        req.body.quantity = cleaned.length;
+        req.body.serials = cleaned;
+      }
+
+      // Update core product
       const {
         name,
         description,
@@ -316,41 +188,36 @@ router.put(
         category_id,
         subcategory_id,
       } = req.body;
-      const productId = req.params.id;
-
       await updateProduct(productId, {
         name,
         description,
         price,
-        quantity,
+        quantity: Number(quantity) || 0,
         category_id,
-        subcategory_id,
+        subcategory_id: subcategory_id || null,
+        serials: req.body.serials,
       });
 
+      // Add new images
       for (const file of req.files) {
         await addProductImage(productId, file.key);
       }
 
-      if (req.body.serials) {
-        let serials = [];
-        try {
-          serials = JSON.parse(req.body.serials);
-        } catch {
-          return res.status(400).json({ message: "Invalid serials format" });
-        }
-        for (let s of serials) {
-          s = s.trim().toUpperCase();
-          if (!/^[A-Z0-9]+$/.test(s)) {
-            return res.status(400).json({ message: `Invalid serial: ${s}` });
-          }
-          await addSerialNumber(productId, s);
-        }
-      }
-
-      res.json({ id: productId });
+      return res.json({ id: productId });
     } catch (err) {
       console.error("Error updating product:", err);
-      res.status(500).json({ message: "Server error" });
+      if (err.code === "ER_DUP_ENTRY") {
+        const match = err.sqlMessage.match(/Duplicate entry '(.+?)'/);
+        const dupSerial = match ? match[1] : null;
+        return res.status(400).json({
+          error: dupSerial
+            ? `Serial number '${dupSerial}' already exists. Please choose a unique serial.`
+            : "Duplicate serial number error.",
+        });
+      }
+      return res
+        .status(500)
+        .json({ error: "Unable to update product. Please try again." });
     }
   }
 );
@@ -359,10 +226,12 @@ router.put(
 router.delete("/:id", authMiddleware, async (req, res) => {
   try {
     await deleteProduct(req.params.id);
-    res.status(204).end();
+    return res.status(204).end();
   } catch (err) {
     console.error("Error deleting product:", err);
-    res.status(500).json({ message: "Server error" });
+    return res
+      .status(500)
+      .json({ error: "Unable to delete product. Please try again." });
   }
 });
 

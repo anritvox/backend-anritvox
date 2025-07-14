@@ -14,7 +14,7 @@ const s3 = new S3Client({
 });
 
 // 2) Presign helper now forcing inline display
-async function presign(key, expiresIn = 900) {
+async function presign(key, expiresIn = 3600) {
   const cmd = new GetObjectCommand({
     Bucket: process.env.S3_BUCKET_NAME,
     Key: key,
