@@ -4,34 +4,31 @@ const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 const multer = require("multer");
 const multerS3 = require("multer-s3");
 
-// 1) S3 client
+// 1) R2 (S3-Compatible) Client Setup
 const s3 = new S3Client({
-  region: process.env.AWS_REGION,
+  region: process.env.R2_REGION || "auto", // usually "auto" for R2
+  endpoint: process.env.R2_ENDPOINT, // eg: https://<account_id>.r2.cloudflarestorage.com
   credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    accessKeyId: process.env.R2_ACCESS_KEY,
+    secretAccessKey: process.env.R2_SECRET_KEY,
   },
 });
 
-// 2) Presign helper now forcing inline display
+// 2) Generate Pre-Signed URL
 async function presign(key, expiresIn = 3600) {
   const cmd = new GetObjectCommand({
-    Bucket: process.env.S3_BUCKET_NAME,
+    Bucket: process.env.R2_BUCKET_NAME,
     Key: key,
-    // ensure browser treats it as inline
-    ResponseContentDisposition: "inline",
-    // optional: explicitly set content type override
-    // ResponseContentType: "image/jpeg" // or derive from key/file
+    ResponseContentDisposition: "inline", // show in browser
   });
   return getSignedUrl(s3, cmd, { expiresIn });
 }
 
-// 3) Multer‐S3 upload middleware with proper Content-Type
+// 3) Multer Middleware for Upload
 const upload = multer({
   storage: multerS3({
     s3,
-    bucket: process.env.S3_BUCKET_NAME,
-    // Automatically set Content-Type based on the file’s mimetype
+    bucket: process.env.R2_BUCKET_NAME,
     contentType: multerS3.AUTO_CONTENT_TYPE,
     metadata: (req, file, cb) => cb(null, { fieldName: file.fieldname }),
     key: (req, file, cb) => {
@@ -39,7 +36,7 @@ const upload = multer({
       cb(null, `products/${filename}`);
     },
   }),
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (req, file, cb) =>
     file.mimetype.startsWith("image/")
       ? cb(null, true)

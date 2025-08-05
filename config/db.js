@@ -8,16 +8,11 @@ const pool = mysql
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
+    port: process.env.DB_PORT,
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
-
-    // Keep-alive so Railway won’t drop idle sockets
-    // enableKeepAlive: true,
-    // keepAliveInitialDelay: 600000, // ping after 60s idle
-
-    // If you need to adjust how long to wait when *connecting*:
-    connectTimeout: 10000, // 10s
+    connectTimeout: 10000,
   })
   .promise();
 
