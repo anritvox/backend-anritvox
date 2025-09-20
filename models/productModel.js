@@ -1,7 +1,7 @@
 const pool = require("../config/db");
 
-const CLOUDFRONT_BASE_URL =
-  "https://pub-7587fa2215914d2ebdd1ec8b70ed9ff0.r2.dev";
+require("dotenv").config();
+const CLOUDFRONT_BASE_URL = process.env.CLOUDFRONT_BASE_URL;
 
 // List all products with category & subcategory names, including an images array
 const getAllProducts = async () => {
