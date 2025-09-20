@@ -68,7 +68,18 @@ router.delete("/:id", authMiddleware, async (req, res) => {
     res.status(204).end();
   } catch (err) {
     console.error("Error deleting category:", err);
-    res.status(500).json({ message: "Server error" });
+    if (err.status && err.message) {
+      // Forward specific known error to client
+      res.status(err.status).json({ message: err.message });
+    } else if (err.code === "ER_DUP_ENTRY") {
+      res.status(400).json({
+        message: "Duplicate category name. Please use a unique name.",
+      });
+    } else {
+      res
+        .status(500)
+        .json({ message: "Server error. Please try again later." });
+    }
   }
 });
 

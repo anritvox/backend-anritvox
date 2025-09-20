@@ -30,6 +30,18 @@ const updateCategory = async (id, name) => {
 };
 
 const deleteCategory = async (id) => {
+  // Check for linked products
+  const [products] = await pool.query(
+    "SELECT id FROM products WHERE category_id = ? LIMIT 1",
+    [id]
+  );
+  if (products.length > 0) {
+    throw {
+      status: 409,
+      message:
+        "Cannot delete: One or more products are still assigned to this category. Please move or delete products first.",
+    };
+  }
   await pool.query("DELETE FROM categories WHERE id = ?", [id]);
 };
 
