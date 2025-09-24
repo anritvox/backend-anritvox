@@ -23,22 +23,22 @@ app.use(express.json());
 app.use(cors());
 
 // ✅ Keep-alive DB ping
-setInterval(() => {
-  pool
-    .query("SELECT 1")
-    .catch((err) => console.error("DB keep-alive error:", err));
-}, 4 * 60 * 1000);
+// setInterval(() => {
+//   pool
+//     .query("SELECT 1")
+//     .catch((err) => console.error("DB keep-alive error:", err));
+// }, 4 * 60 * 1000);
 
-// ✅ Health-check route
-app.get("/api/health", async (req, res) => {
-  try {
-    const [rows] = await pool.query("SELECT 1 + 1 AS result");
-    res.json({ status: "ok", dbTest: rows[0].result });
-  } catch (err) {
-    console.error("DB connection error:", err);
-    res.status(500).json({ status: "error", message: err.message });
-  }
-});
+// // ✅ Health-check route
+// app.get("/api/health", async (req, res) => {
+//   try {
+//     const [rows] = await pool.query("SELECT 1 + 1 AS result");
+//     res.json({ status: "ok", dbTest: rows[0].result });
+//   } catch (err) {
+//     console.error("DB connection error:", err);
+//     res.status(500).json({ status: "error", message: err.message });
+//   }
+// });
 
 // ✅ API routes
 app.use("/api/categories", categoryRoutes);
