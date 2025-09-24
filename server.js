@@ -9,6 +9,7 @@ const productRoutes = require("./routes/productRoutes");
 const warrantyRoutes = require("./routes/warrantyRoutes");
 const contactRoutes = require("./routes/contactRoutes");
 const authRoutes = require("./routes/authRoutes");
+const serialRoutes = require("./routes/serialRoutes");
 
 const app = express();
 app.use(express.json());
@@ -23,11 +24,11 @@ app.use(express.json());
 app.use(cors());
 
 // ✅ Keep-alive DB ping
-// setInterval(() => {
-//   pool
-//     .query("SELECT 1")
-//     .catch((err) => console.error("DB keep-alive error:", err));
-// }, 4 * 60 * 1000);
+setInterval(() => {
+  pool
+    .query("SELECT 1")
+    .catch((err) => console.error("DB keep-alive error:", err));
+}, 4 * 60 * 1000);
 
 // // ✅ Health-check route
 // app.get("/api/health", async (req, res) => {
@@ -47,6 +48,7 @@ app.use("/api/products", productRoutes);
 app.use("/api/warranty", warrantyRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/serials", serialRoutes);
 
 // ✅ Start server
 const PORT = process.env.PORT || 5000;
