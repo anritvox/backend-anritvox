@@ -114,7 +114,25 @@ router.post(
 
       // Add serial numbers
       for (const s of cleaned) {
-        await addSerialNumber(productId, s);
+        try {
+          await addSerialNumber(productId, s);
+        } catch (serialErr) {
+          if (serialErr.status === 409 && serialErr.duplicateSerial) {
+            // Rollback created product on error
+            if (productId) {
+              try {
+                await deleteProduct(productId);
+              } catch (cleanupErr) {
+                console.error("Cleanup failed:", cleanupErr);
+              }
+            }
+            return res.status(409).json({
+              error: `Duplicate serial number detected: ${serialErr.duplicateSerial}`,
+              duplicateSerial: serialErr.duplicateSerial,
+            });
+          }
+          throw serialErr;
+        }
       }
 
       return res.status(201).json({ id: productId });

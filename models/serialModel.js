@@ -51,11 +51,11 @@ const addProductSerials = async (productId, serials) => {
     (s, i) => cleanedSerials.indexOf(s) !== i
   );
   if (duplicatesInBatch.length > 0) {
+    const uniqueDuplicates = [...new Set(duplicatesInBatch)];
     throw {
       status: 400,
-      message: `Duplicate serials in batch: ${[
-        ...new Set(duplicatesInBatch),
-      ].join(", ")}`,
+      message: `Duplicate serials in batch: ${uniqueDuplicates.join(", ")}`,
+      duplicates: uniqueDuplicates,
     };
   }
 
@@ -70,6 +70,7 @@ const addProductSerials = async (productId, serials) => {
     throw {
       status: 409,
       message: `Serial(s) already exist: ${existingSerials.join(", ")}`,
+      duplicates: existingSerials,
     };
   }
 
