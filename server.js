@@ -14,14 +14,26 @@ const serialRoutes = require("./routes/serialRoutes");
 const app = express();
 app.use(express.json());
 
-// ✅ Secure CORS setup
-// const corsOptions = {
-//   origin: "https://www.anritvox.com",
-//   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-//   allowedHeaders: ["Content-Type", "Authorization"],
-// };
-// app.use(cors(corsOptions));
-app.use(cors());
+// ✅ Enhanced CORS setup for Vercel & Live Site
+const allowedOrigins = [
+  "https://anritvox-frontend.vercel.app",
+  "https://www.anritvox.com",
+  "http://localhost:5173"
+];
+
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
 
 // ✅ Keep-alive DB ping
 setInterval(() => {
@@ -30,18 +42,7 @@ setInterval(() => {
     .catch((err) => console.error("DB keep-alive error:", err));
 }, 4 * 60 * 1000);
 
-// // ✅ Health-check route
-// app.get("/api/health", async (req, res) => {
-//   try {
-//     const [rows] = await pool.query("SELECT 1 + 1 AS result");
-//     res.json({ status: "ok", dbTest: rows[0].result });
-//   } catch (err) {
-//     console.error("DB connection error:", err);
-//     res.status(500).json({ status: "error", message: err.message });
-//   }
-// });
-
-// ✅ API routes
+// Routes
 app.use("/api/categories", categoryRoutes);
 app.use("/api/subcategories", subcategoryRoutes);
 app.use("/api/products", productRoutes);
@@ -50,6 +51,7 @@ app.use("/api/contact", contactRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/serials", serialRoutes);
 
-// ✅ Start server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
