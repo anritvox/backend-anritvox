@@ -71,4 +71,5 @@ module.exports = {
   updateUserStatus,
   deleteUser,
   verifyPassword,
+    createUsersTable,
 };
