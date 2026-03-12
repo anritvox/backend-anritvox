@@ -19,6 +19,12 @@ const orderRoutes = require("./routes/orderRoutes");
 const addressRoutes = require("./routes/addressRoutes");
 const adminUserRoutes = require("./routes/adminUserRoutes");
 
+// Models for table initialization
+const { createUsersTables } = require("./models/userModel");
+const { createCartTable } = require("./models/cartModel");
+const { createOrdersTables } = require("./models/orderModel");
+const { createAddressTable } = require("./models/addressModel");
+
 const app = express();
 app.use(express.json());
 
@@ -28,7 +34,6 @@ const allowedOrigins = [
   "https://www.anritvox.com",
   "http://localhost:5173"
 ];
-
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
@@ -68,7 +73,22 @@ app.use("/api/admin", adminUserRoutes);
 // Health check
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// Initialize DB tables then start server
+async function startServer() {
+  try {
+    await createUsersTables();
+    await createCartTable();
+    await createOrdersTables();
+    await createAddressTable();
+    console.log("All tables initialized.");
+  } catch (err) {
+    console.error("Table initialization error (non-fatal):", err.message);
+  }
+
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
+
+startServer();
