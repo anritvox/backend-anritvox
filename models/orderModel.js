@@ -29,22 +29,19 @@ const createOrdersTables = async () => {
     )
   `);
 };
-createOrdersTables().catch(console.error);
 
 const createOrder = async (userId, { items, total, addressSnapshot, deliveryType }) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     const [res] = await conn.query(
-      `INSERT INTO orders (user_id, total, address_snapshot, delivery_type, payment_mode)
-       VALUES (?, ?, ?, ?, 'COD')`,
+      `INSERT INTO orders (user_id, total, address_snapshot, delivery_type, payment_mode) VALUES (?, ?, ?, ?, 'COD')`,
       [userId, total, JSON.stringify(addressSnapshot), deliveryType || 'standard']
     );
     const orderId = res.insertId;
     for (const item of items) {
       await conn.query(
-        `INSERT INTO order_items (order_id, product_id, name, price, quantity, image)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO order_items (order_id, product_id, name, price, quantity, image) VALUES (?, ?, ?, ?, ?, ?)`,
         [orderId, item.product_id, item.name, item.price, item.quantity, item.images?.[0] || null]
       );
     }
@@ -73,9 +70,7 @@ const getOrdersByUser = async (userId) => {
 
 const getAllOrders = async () => {
   const [orders] = await pool.query(
-    `SELECT o.*, u.name as customer_name, u.email as customer_email
-     FROM orders o JOIN users u ON u.id = o.user_id
-     ORDER BY o.created_at DESC`
+    `SELECT o.*, u.name as customer_name, u.email as customer_email FROM orders o JOIN users u ON u.id = o.user_id ORDER BY o.created_at DESC`
   );
   for (const o of orders) {
     const [items] = await pool.query('SELECT * FROM order_items WHERE order_id=?', [o.id]);
@@ -98,4 +93,4 @@ const getOrderById = async (orderId) => {
   return order;
 };
 
-module.exports = { createOrder, getOrdersByUser, getAllOrders, updateOrderStatus, getOrderById };
+module.exports = { createOrder, getOrdersByUser, getAllOrders, updateOrderStatus, getOrderById, createOrdersTables };
