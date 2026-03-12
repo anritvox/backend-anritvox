@@ -14,15 +14,14 @@ const createCartTable = async () => {
     )
   `);
 };
-createCartTable().catch(console.error);
 
 const getCartByUser = async (userId) => {
   const [rows] = await pool.query(
     `SELECT ci.id, ci.quantity, ci.product_id,
-       p.name, p.price, p.images
-     FROM cart_items ci
-     JOIN products p ON p.id = ci.product_id
-     WHERE ci.user_id = ?`,
+        p.name, p.price, p.images
+      FROM cart_items ci
+      JOIN products p ON p.id = ci.product_id
+      WHERE ci.user_id = ?`,
     [userId]
   );
   return rows.map(r => ({
@@ -33,18 +32,24 @@ const getCartByUser = async (userId) => {
 
 const upsertCartItem = async (userId, productId, quantity) => {
   await pool.query(
-    `INSERT INTO cart_items (user_id, product_id, quantity) VALUES (?, ?, ?)
-     ON DUPLICATE KEY UPDATE quantity = VALUES(quantity)`,
-    [userId, productId, quantity]
+    `INSERT INTO cart_items (user_id, product_id, quantity)
+     VALUES (?, ?, ?)
+     ON DUPLICATE KEY UPDATE quantity = ?`,
+    [userId, productId, quantity, quantity]
   );
+  return getCartByUser(userId);
 };
 
 const removeCartItem = async (userId, productId) => {
-  await pool.query('DELETE FROM cart_items WHERE user_id=? AND product_id=?', [userId, productId]);
+  await pool.query(
+    'DELETE FROM cart_items WHERE user_id = ? AND product_id = ?',
+    [userId, productId]
+  );
+  return getCartByUser(userId);
 };
 
 const clearCart = async (userId) => {
-  await pool.query('DELETE FROM cart_items WHERE user_id=?', [userId]);
+  await pool.query('DELETE FROM cart_items WHERE user_id = ?', [userId]);
 };
 
-module.exports = { getCartByUser, upsertCartItem, removeCartItem, clearCart createCartTable, };
+module.exports = { getCartByUser, upsertCartItem, removeCartItem, clearCart, createCartTable };
