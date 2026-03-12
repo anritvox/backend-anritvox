@@ -20,7 +20,7 @@ const addressRoutes = require("./routes/addressRoutes");
 const adminUserRoutes = require("./routes/adminUserRoutes");
 
 // Models for table initialization
-const { createUsersTables } = require("./models/userModel");
+const { createUsersTable } = require("./models/userModel");
 const { createCartTable } = require("./models/cartModel");
 const { createOrdersTables } = require("./models/orderModel");
 const { createAddressTable } = require("./models/addressModel");
@@ -76,7 +76,7 @@ app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 // Initialize DB tables then start server
 async function startServer() {
   try {
-    await createUsersTables();
+        await createUsersTable();
     await createCartTable();
     await createOrdersTables();
     await createAddressTable();
