@@ -47,4 +47,4 @@ const clearCart = async (userId) => {
   await pool.query('DELETE FROM cart_items WHERE user_id=?', [userId]);
 };
 
-module.exports = { getCartByUser, upsertCartItem, removeCartItem, clearCart };
+module.exports = { getCartByUser, upsertCartItem, removeCartItem, clearCart createCartTable, };
