@@ -19,7 +19,6 @@ const createAddressTable = async () => {
     )
   `);
 };
-createAddressTable().catch(console.error);
 
 const getAddressesByUser = async (userId) => {
   const [rows] = await pool.query(
@@ -34,10 +33,8 @@ const createAddress = async (userId, data) => {
     await pool.query('UPDATE addresses SET is_default=0 WHERE user_id=?', [userId]);
   }
   const [result] = await pool.query(
-    `INSERT INTO addresses (user_id,full_name,phone,line1,line2,city,state,pincode,is_default)
-     VALUES (?,?,?,?,?,?,?,?,?)`,
-    [userId, data.full_name, data.phone, data.line1, data.line2||null,
-     data.city, data.state, data.pincode, data.is_default?1:0]
+    `INSERT INTO addresses (user_id,full_name,phone,line1,line2,city,state,pincode,is_default) VALUES (?,?,?,?,?,?,?,?,?)`,
+    [userId, data.full_name, data.phone, data.line1, data.line2||null, data.city, data.state, data.pincode, data.is_default?1:0]
   );
   return result.insertId;
 };
@@ -47,10 +44,8 @@ const updateAddress = async (id, userId, data) => {
     await pool.query('UPDATE addresses SET is_default=0 WHERE user_id=?', [userId]);
   }
   await pool.query(
-    `UPDATE addresses SET full_name=?,phone=?,line1=?,line2=?,city=?,state=?,pincode=?,is_default=?
-     WHERE id=? AND user_id=?`,
-    [data.full_name, data.phone, data.line1, data.line2||null,
-     data.city, data.state, data.pincode, data.is_default?1:0, id, userId]
+    `UPDATE addresses SET full_name=?,phone=?,line1=?,line2=?,city=?,state=?,pincode=?,is_default=? WHERE id=? AND user_id=?`,
+    [data.full_name, data.phone, data.line1, data.line2||null, data.city, data.state, data.pincode, data.is_default?1:0, id, userId]
   );
 };
 
@@ -58,4 +53,4 @@ const deleteAddress = async (id, userId) => {
   await pool.query('DELETE FROM addresses WHERE id=? AND user_id=?', [id, userId]);
 };
 
-module.exports = { getAddressesByUser, createAddress, updateAddress, deleteAddress } createAddressTable,;
+module.exports = { getAddressesByUser, createAddress, updateAddress, deleteAddress, createAddressTable };
