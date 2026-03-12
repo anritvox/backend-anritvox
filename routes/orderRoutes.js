@@ -2,7 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const { userAuth } = require('./userRoutes');
-const { createOrder, getOrdersByUser } = require('../models/orderModel');
+const { createOrder, getOrdersByUser, getAllOrders, updateOrderStatus } = require('../models/orderModel');
 const { getCartByUser, clearCart } = require('../models/cartModel');
 const { getAddressesByUser } = require('../models/addressModel');
 
@@ -34,6 +34,16 @@ router.post('/', userAuth, async (req, res) => {
   } catch (err) {
     console.error(err);
     return res.status(500).json({ message: 'Failed to create order' });
+  }
+});
+
+// GET /api/orders/my  (my orders - alias)
+router.get('/my', userAuth, async (req, res) => {
+  try {
+    const orders = await getOrdersByUser(req.user.id);
+    return res.json(orders);
+  } catch (err) {
+    return res.status(500).json({ message: 'Failed to load orders' });
   }
 });
 
