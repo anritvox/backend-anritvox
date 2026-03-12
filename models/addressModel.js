@@ -58,4 +58,4 @@ const deleteAddress = async (id, userId) => {
   await pool.query('DELETE FROM addresses WHERE id=? AND user_id=?', [id, userId]);
 };
 
-module.exports = { getAddressesByUser, createAddress, updateAddress, deleteAddress };
+module.exports = { getAddressesByUser, createAddress, updateAddress, deleteAddress } createAddressTable,;
