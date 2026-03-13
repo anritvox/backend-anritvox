@@ -3,7 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const pool = require("./config/db");
 
-// Existing routes
+// Routes
 const categoryRoutes = require("./routes/categoryRoutes");
 const subcategoryRoutes = require("./routes/subcategoryRoutes");
 const productRoutes = require("./routes/productRoutes");
@@ -11,50 +11,47 @@ const warrantyRoutes = require("./routes/warrantyRoutes");
 const contactRoutes = require("./routes/contactRoutes");
 const authRoutes = require("./routes/authRoutes");
 const serialRoutes = require("./routes/serialRoutes");
-
-// New routes
 const { router: userRoutes } = require("./routes/userRoutes");
 const cartRoutes = require("./routes/cartRoutes");
 const orderRoutes = require("./routes/orderRoutes");
 const addressRoutes = require("./routes/addressRoutes");
 const adminUserRoutes = require("./routes/adminUserRoutes");
+const wishlistRoutes = require("./routes/wishlistRoutes");
+const couponRoutes = require("./routes/couponRoutes");
 
 // Models for table initialization
 const { createUsersTable } = require("./models/userModel");
 const { createCartTable } = require("./models/cartModel");
 const { createOrdersTables } = require("./models/orderModel");
 const { createAddressTable } = require("./models/addressModel");
+const { createWishlistTable } = require("./models/wishlistModel");
+const { createCouponTable } = require("./models/couponModel");
 
 const app = express();
 app.use(express.json());
 
 // Enhanced CORS setup for Vercel & Live Site
 const allowedOrigins = [
-  "https://anritvox-frontend.vercel.app",
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "https://anritvox.vercel.app",
   "https://www.anritvox.com",
-  "http://localhost:5173"
+  "https://anritvox.com",
 ];
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
-}));
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true,
+  })
+);
 
-// Keep-alive DB ping
-setInterval(() => {
-  pool
-    .query("SELECT 1")
-    .catch((err) => console.error("DB keep-alive error:", err));
-}, 4 * 60 * 1000);
-
-// Existing routes
+// Register routes
 app.use("/api/categories", categoryRoutes);
 app.use("/api/subcategories", subcategoryRoutes);
 app.use("/api/products", productRoutes);
@@ -62,33 +59,34 @@ app.use("/api/warranty", warrantyRoutes);
 app.use("/api/contact", contactRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/serials", serialRoutes);
-
-// New routes
 app.use("/api/users", userRoutes);
 app.use("/api/cart", cartRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/addresses", addressRoutes);
-app.use("/api/admin", adminUserRoutes);
+app.use("/api/admin/users", adminUserRoutes);
+app.use("/api/wishlist", wishlistRoutes);
+app.use("/api/coupons", couponRoutes);
 
 // Health check
-app.get("/api/health", (req, res) => res.json({ status: "ok" }));
+app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running" }));
 
-// Initialize DB tables then start server
-async function startServer() {
+// Initialize DB tables and start server
+const initDB = async () => {
   try {
-        await createUsersTable();
+    await createUsersTable();
     await createCartTable();
     await createOrdersTables();
     await createAddressTable();
-    console.log("All tables initialized.");
+    await createWishlistTable();
+    await createCouponTable();
+    console.log("All tables initialized");
   } catch (err) {
-    console.error("Table initialization error (non-fatal):", err.message);
+    console.error("DB init error:", err.message);
   }
+};
 
-  const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-  });
-}
-
-startServer();
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, async () => {
+  console.log(`Server running on port ${PORT}`);
+  await initDB();
+});
