@@ -25,6 +25,7 @@ const settingsRoutes = require("./routes/settingsRoutes");
 const shippingRoutes = require("./routes/shippingRoutes");
 const returnRoutes = require("./routes/returnRoutes");
 const inventoryRoutes = require("./routes/inventoryRoutes");
+const bannerRoutes = require("./routes/bannerRoutes");
 
 // Models for table initialization
 const { createUsersTable } = require("./models/userModel");
@@ -38,6 +39,7 @@ const { createNotificationTable } = require("./models/notificationModel");
 const { createSettingsTable } = require("./models/settingsModel");
 const { createShippingTable } = require("./models/shippingModel");
 const { createReturnTable } = require("./models/returnModel");
+const { createBannerTable } = require("./models/bannerModel");
 
 const app = express();
 app.use(express.json());
@@ -85,6 +87,7 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/shipping", shippingRoutes);
 app.use("/api/returns", returnRoutes);
 app.use("/api/inventory", inventoryRoutes);
+app.use("/api/banners", bannerRoutes);
 
 // Health check
 app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running", version: "3.0" }));
@@ -103,6 +106,7 @@ const initDB = async () => {
     await createSettingsTable();
     await createShippingTable();
     await createReturnTable();
+    await createBannerTable();
     console.log("All tables initialized successfully");
   } catch (err) {
     console.error("DB init error:", err.message);
