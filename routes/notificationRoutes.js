@@ -1,8 +1,7 @@
 // backend/routes/notificationRoutes.js
 const express = require('express');
 const router = express.Router();
-const { authenticateUser } = require('./userRoutes');
-const { authenticateAdmin } = require('../middleware/authMiddleware');
+const { authenticateUser, authenticateAdmin } = require('../middleware/authMiddleware');
 const { createNotification, getNotificationsForUser, markAsRead, countUnread, getAllNotifications, deleteNotification } = require('../models/notificationModel');
 
 // GET /api/notifications - user: get own + global notifications
@@ -60,7 +59,7 @@ router.get('/admin/all', authenticateAdmin, async (req, res) => {
   }
 });
 
-// POST /api/notifications/admin - admin: create notification (specific user or global)
+// POST /api/notifications/admin - admin: create notification
 router.post('/admin', authenticateAdmin, async (req, res) => {
   try {
     const { user_id, title, message, type, is_global } = req.body;
