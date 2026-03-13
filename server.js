@@ -49,6 +49,7 @@ const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
   "https://anritvox.vercel.app",
+  "https://anritvox-frontend.vercel.app",
   "https://www.anritvox.com",
   "https://anritvox.com",
 ];
@@ -77,7 +78,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/cart", cartRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/addresses", addressRoutes);
-app.use("/api/admin/users", adminUserRoutes);
+app.use("/api/admin", adminUserRoutes);  // FIXED: was /api/admin/users — routes inside use /users and /orders prefixes
 app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/coupons", couponRoutes);
 app.use("/api/reviews", reviewRoutes);
@@ -90,7 +91,7 @@ app.use("/api/inventory", inventoryRoutes);
 app.use("/api/banners", bannerRoutes);
 
 // Health check
-app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running", version: "3.0" }));
+app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running", version: "3.1" }));
 
 // Initialize DB tables
 const initDB = async () => {
