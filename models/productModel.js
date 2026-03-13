@@ -3,6 +3,20 @@ const pool = require('../config/db');
 require('dotenv').config();
 const CLOUDFRONT_BASE_URL = process.env.CLOUDFRONT_BASE_URL;
 
+// Helper: add column if it doesn't exist (MySQL 5.7 compatible)
+const addColIfMissing = async (table, column, definition) => {
+  const [cols] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+     AND TABLE_NAME = ?
+     AND COLUMN_NAME = ?`,
+    [table, column]
+  );
+  if (cols.length === 0) {
+    await pool.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+};
+
 // Auto-create/alter products table with all e-commerce fields
 const initProductsTable = async () => {
   await pool.query(`
@@ -26,20 +40,15 @@ const initProductsTable = async () => {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
   `);
-  // Add new columns to existing table if missing (non-destructive)
-  const addCols = [
-    "ALTER TABLE products ADD COLUMN IF NOT EXISTS slug VARCHAR(255) AFTER name",
-    "ALTER TABLE products ADD COLUMN IF NOT EXISTS sku VARCHAR(100) AFTER slug",
-    "ALTER TABLE products ADD COLUMN IF NOT EXISTS brand VARCHAR(100) AFTER sku",
-    "ALTER TABLE products ADD COLUMN IF NOT EXISTS discount_price DECIMAL(10,2) DEFAULT NULL AFTER price",
-    "ALTER TABLE products ADD COLUMN IF NOT EXISTS status ENUM('active','inactive') DEFAULT 'active' AFTER quantity",
-    "ALTER TABLE products ADD COLUMN IF NOT EXISTS meta_title VARCHAR(255) AFTER subcategory_id",
-    "ALTER TABLE products ADD COLUMN IF NOT EXISTS meta_description TEXT AFTER meta_title",
-    "ALTER TABLE products ADD COLUMN IF NOT EXISTS tags VARCHAR(500) AFTER meta_description",
-  ];
-  for (const sql of addCols) {
-    await pool.query(sql).catch(() => {}); // ignore if column exists
-  }
+  // Add new columns to existing table if missing (MySQL 5.7 compatible)
+  await addColIfMissing('products', 'slug', 'VARCHAR(255) AFTER name');
+  await addColIfMissing('products', 'sku', 'VARCHAR(100) AFTER slug');
+  await addColIfMissing('products', 'brand', 'VARCHAR(100) AFTER sku');
+  await addColIfMissing('products', 'discount_price', 'DECIMAL(10,2) DEFAULT NULL AFTER price');
+  await addColIfMissing('products', 'status', "ENUM('active','inactive') DEFAULT 'active' AFTER quantity");
+  await addColIfMissing('products', 'meta_title', 'VARCHAR(255) AFTER subcategory_id');
+  await addColIfMissing('products', 'meta_description', 'TEXT AFTER meta_title');
+  await addColIfMissing('products', 'tags', 'VARCHAR(500) AFTER meta_description');
 };
 initProductsTable().catch(console.error);
 
@@ -56,7 +65,6 @@ const attachImages = async (rows) => {
 };
 
 // ─── QUERIES ─────────────────────────────────────────────────────────
-
 // List all products (admin - includes inactive)
 const getAllProducts = async () => {
   const [rows] = await pool.query(`
@@ -162,7 +170,7 @@ const createProduct = async (data) => {
   } = data;
   const [result] = await pool.query(
     `INSERT INTO products
-      (name, slug, sku, brand, description, price, discount_price, quantity, status, category_id, subcategory_id, meta_title, meta_description, tags)
+     (name, slug, sku, brand, description, price, discount_price, quantity, status, category_id, subcategory_id, meta_title, meta_description, tags)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [name, slug || null, sku || null, brand || null, description || null,
      price, discount_price || null, quantity || 0, status,
@@ -182,10 +190,10 @@ const updateProduct = async (id, data) => {
   } = data;
   await pool.query(
     `UPDATE products SET
-      name=?, slug=?, sku=?, brand=?, description=?,
-      price=?, discount_price=?,
-      category_id=?, subcategory_id=?,
-      meta_title=?, meta_description=?, tags=?
+     name=?, slug=?, sku=?, brand=?, description=?,
+     price=?, discount_price=?,
+     category_id=?, subcategory_id=?,
+     meta_title=?, meta_description=?, tags=?
      WHERE id=?`,
     [name, slug || null, sku || null, brand || null, description || null,
      price, discount_price || null,
