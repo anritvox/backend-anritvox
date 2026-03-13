@@ -1,7 +1,21 @@
 // backend/models/categoryModel.js
 const pool = require('../config/db');
 
-// Non-destructive init: add new columns if missing
+// Helper: add column if it doesn't exist (MySQL 5.7 compatible)
+const addColumnIfMissing = async (table, column, definition) => {
+  const [cols] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+     AND TABLE_NAME = ?
+     AND COLUMN_NAME = ?`,
+    [table, column]
+  );
+  if (cols.length === 0) {
+    await pool.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+};
+
+// Non-destructive init: create table and add new columns if missing
 const initCategoriesTable = async () => {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS categories (
@@ -13,12 +27,9 @@ const initCategoriesTable = async () => {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
-  const addCols = [
-    "ALTER TABLE categories ADD COLUMN IF NOT EXISTS description TEXT AFTER name",
-    "ALTER TABLE categories ADD COLUMN IF NOT EXISTS image_url VARCHAR(500) AFTER description",
-    "ALTER TABLE categories ADD COLUMN IF NOT EXISTS is_active TINYINT(1) DEFAULT 1 AFTER image_url",
-  ];
-  for (const sql of addCols) { await pool.query(sql).catch(() => {}); }
+  await addColumnIfMissing('categories', 'description', 'TEXT AFTER name');
+  await addColumnIfMissing('categories', 'image_url', 'VARCHAR(500) AFTER description');
+  await addColumnIfMissing('categories', 'is_active', 'TINYINT(1) DEFAULT 1 AFTER image_url');
 };
 initCategoriesTable().catch(console.error);
 
@@ -37,32 +48,22 @@ const getCategoryById = async (id) => {
   return rows[0];
 };
 
-const createCategory = async ({ name, description, image_url }) => {
+const createCategory = async ({ name, description, image_url, is_active }) => {
   const [result] = await pool.query(
-    'INSERT INTO categories (name, description, image_url) VALUES (?, ?, ?)',
-    [name, description || null, image_url || null]
+    'INSERT INTO categories (name, description, image_url, is_active) VALUES (?, ?, ?, ?)',
+    [name, description || null, image_url || null, is_active !== undefined ? is_active : 1]
   );
-  return { id: result.insertId, name, description, image_url };
+  return result.insertId;
 };
 
-const updateCategory = async (id, { name, description, image_url }) => {
+const updateCategory = async (id, { name, description, image_url, is_active }) => {
   await pool.query(
-    'UPDATE categories SET name=?, description=?, image_url=? WHERE id=?',
-    [name, description || null, image_url || null, id]
+    'UPDATE categories SET name = ?, description = ?, image_url = ?, is_active = ? WHERE id = ?',
+    [name, description || null, image_url || null, is_active !== undefined ? is_active : 1, id]
   );
-  return { id, name, description, image_url };
 };
 
 const deleteCategory = async (id) => {
-  const [products] = await pool.query(
-    'SELECT id FROM products WHERE category_id = ? LIMIT 1', [id]
-  );
-  if (products.length > 0) {
-    throw {
-      status: 409,
-      message: 'Cannot delete: one or more products are still assigned to this category. Move or delete products first.',
-    };
-  }
   await pool.query('DELETE FROM categories WHERE id = ?', [id]);
 };
 
