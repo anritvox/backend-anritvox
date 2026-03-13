@@ -1,11 +1,10 @@
 // backend/routes/reviewRoutes.js
 const express = require('express');
 const router = express.Router();
-const { authenticateUser } = require('./userRoutes');
-const { authenticateAdmin } = require('../middleware/authMiddleware');
+const { authenticateUser, authenticateAdmin } = require('../middleware/authMiddleware');
 const { createReview, getReviewsByProduct, getProductRatingSummary, getAllReviews, approveReview, rejectReview, getUserReviews } = require('../models/reviewModel');
 
-// GET /api/reviews/product/:productId - public: get approved reviews + rating summary
+// GET /api/reviews/product/:productId - public: approved reviews + rating summary
 router.get('/product/:productId', async (req, res) => {
   try {
     const productId = parseInt(req.params.productId);
@@ -14,6 +13,17 @@ router.get('/product/:productId', async (req, res) => {
       getProductRatingSummary(productId)
     ]);
     res.json({ reviews, summary });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to get reviews' });
+  }
+});
+
+// GET /api/reviews/my - user: my reviews
+router.get('/my', authenticateUser, async (req, res) => {
+  try {
+    const reviews = await getUserReviews(req.user.id);
+    res.json(reviews);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to get reviews' });
@@ -32,17 +42,6 @@ router.post('/', authenticateUser, async (req, res) => {
     if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'You already reviewed this product for this order' });
     console.error(err);
     res.status(500).json({ message: 'Failed to submit review' });
-  }
-});
-
-// GET /api/reviews/my - user: my reviews
-router.get('/my', authenticateUser, async (req, res) => {
-  try {
-    const reviews = await getUserReviews(req.user.id);
-    res.json(reviews);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Failed to get reviews' });
   }
 });
 
