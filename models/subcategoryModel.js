@@ -1,7 +1,7 @@
 // backend/models/subcategoryModel.js
 const pool = require('../config/db');
 
-// Non-destructive: add description column if missing
+// Non-destructive: create table and add description column if missing (MySQL 5.7 compatible)
 const initSubcategoriesTable = async () => {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS subcategories (
@@ -12,9 +12,18 @@ const initSubcategoriesTable = async () => {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
-  await pool.query(
-    "ALTER TABLE subcategories ADD COLUMN IF NOT EXISTS description TEXT AFTER name"
-  ).catch(() => {});
+  // MySQL 5.7 compatible: check information_schema before ALTER
+  const [cols] = await pool.query(
+    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+     AND TABLE_NAME = 'subcategories'
+     AND COLUMN_NAME = 'description'`
+  );
+  if (cols.length === 0) {
+    await pool.query(
+      'ALTER TABLE subcategories ADD COLUMN description TEXT AFTER name'
+    );
+  }
 };
 initSubcategoriesTable().catch(console.error);
 
@@ -44,7 +53,7 @@ const getSubcategoriesByCategory = async (categoryId) => {
   return rows;
 };
 
-// Single subcategory by ID
+// Get single subcategory by id
 const getSubcategoryById = async (id) => {
   const [rows] = await pool.query(
     `SELECT sc.id, sc.name, sc.description, sc.category_id,
@@ -58,34 +67,24 @@ const getSubcategoryById = async (id) => {
 };
 
 // Create subcategory
-const createSubcategory = async ({ name, category_id, description }) => {
+const createSubcategory = async ({ name, description, category_id }) => {
   const [result] = await pool.query(
     'INSERT INTO subcategories (name, description, category_id) VALUES (?, ?, ?)',
     [name, description || null, category_id]
   );
-  return { id: result.insertId, name, description, category_id };
+  return result.insertId;
 };
 
 // Update subcategory
-const updateSubcategory = async (id, { name, category_id, description }) => {
+const updateSubcategory = async (id, { name, description, category_id }) => {
   await pool.query(
-    'UPDATE subcategories SET name=?, description=?, category_id=? WHERE id=?',
+    'UPDATE subcategories SET name = ?, description = ?, category_id = ? WHERE id = ?',
     [name, description || null, category_id, id]
   );
-  return { id, name, description, category_id };
 };
 
 // Delete subcategory
 const deleteSubcategory = async (id) => {
-  const [products] = await pool.query(
-    'SELECT id FROM products WHERE subcategory_id = ? LIMIT 1', [id]
-  );
-  if (products.length > 0) {
-    throw {
-      status: 409,
-      message: 'Cannot delete: products are still assigned to this subcategory.',
-    };
-  }
   await pool.query('DELETE FROM subcategories WHERE id = ?', [id]);
 };
 
