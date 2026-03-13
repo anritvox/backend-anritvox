@@ -21,6 +21,10 @@ const couponRoutes = require("./routes/couponRoutes");
 const reviewRoutes = require("./routes/reviewRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const analyticsRoutes = require("./routes/analyticsRoutes");
+const settingsRoutes = require("./routes/settingsRoutes");
+const shippingRoutes = require("./routes/shippingRoutes");
+const returnRoutes = require("./routes/returnRoutes");
+const inventoryRoutes = require("./routes/inventoryRoutes");
 
 // Models for table initialization
 const { createUsersTable } = require("./models/userModel");
@@ -31,6 +35,9 @@ const { createWishlistTable } = require("./models/wishlistModel");
 const { createCouponTable } = require("./models/couponModel");
 const { createReviewTable } = require("./models/reviewModel");
 const { createNotificationTable } = require("./models/notificationModel");
+const { createSettingsTable } = require("./models/settingsModel");
+const { createShippingTable } = require("./models/shippingModel");
+const { createReturnTable } = require("./models/returnModel");
 
 const app = express();
 app.use(express.json());
@@ -74,9 +81,13 @@ app.use("/api/coupons", couponRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/analytics", analyticsRoutes);
+app.use("/api/settings", settingsRoutes);
+app.use("/api/shipping", shippingRoutes);
+app.use("/api/returns", returnRoutes);
+app.use("/api/inventory", inventoryRoutes);
 
 // Health check
-app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running", version: "2.0" }));
+app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running", version: "3.0" }));
 
 // Initialize DB tables
 const initDB = async () => {
@@ -89,6 +100,9 @@ const initDB = async () => {
     await createCouponTable();
     await createReviewTable();
     await createNotificationTable();
+    await createSettingsTable();
+    await createShippingTable();
+    await createReturnTable();
     console.log("All tables initialized successfully");
   } catch (err) {
     console.error("DB init error:", err.message);
