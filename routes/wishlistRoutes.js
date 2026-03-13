@@ -1,7 +1,7 @@
 // backend/routes/wishlistRoutes.js
 const express = require('express');
 const router = express.Router();
-const { authenticateUser } = require('./userRoutes');
+const { authenticateUser } = require('../middleware/authMiddleware');
 const { addToWishlist, removeFromWishlist, getWishlistByUser, isInWishlist } = require('../models/wishlistModel');
 
 // GET /api/wishlist - get user wishlist
