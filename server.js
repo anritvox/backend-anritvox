@@ -18,6 +18,9 @@ const addressRoutes = require("./routes/addressRoutes");
 const adminUserRoutes = require("./routes/adminUserRoutes");
 const wishlistRoutes = require("./routes/wishlistRoutes");
 const couponRoutes = require("./routes/couponRoutes");
+const reviewRoutes = require("./routes/reviewRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
+const analyticsRoutes = require("./routes/analyticsRoutes");
 
 // Models for table initialization
 const { createUsersTable } = require("./models/userModel");
@@ -26,11 +29,13 @@ const { createOrdersTables } = require("./models/orderModel");
 const { createAddressTable } = require("./models/addressModel");
 const { createWishlistTable } = require("./models/wishlistModel");
 const { createCouponTable } = require("./models/couponModel");
+const { createReviewTable } = require("./models/reviewModel");
+const { createNotificationTable } = require("./models/notificationModel");
 
 const app = express();
 app.use(express.json());
 
-// Enhanced CORS setup for Vercel & Live Site
+// Enhanced CORS setup
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
@@ -51,7 +56,7 @@ app.use(
   })
 );
 
-// Register routes
+// Register all routes
 app.use("/api/categories", categoryRoutes);
 app.use("/api/subcategories", subcategoryRoutes);
 app.use("/api/products", productRoutes);
@@ -66,11 +71,14 @@ app.use("/api/addresses", addressRoutes);
 app.use("/api/admin/users", adminUserRoutes);
 app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/coupons", couponRoutes);
+app.use("/api/reviews", reviewRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/analytics", analyticsRoutes);
 
 // Health check
-app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running" }));
+app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running", version: "2.0" }));
 
-// Initialize DB tables and start server
+// Initialize DB tables
 const initDB = async () => {
   try {
     await createUsersTable();
@@ -79,7 +87,9 @@ const initDB = async () => {
     await createAddressTable();
     await createWishlistTable();
     await createCouponTable();
-    console.log("All tables initialized");
+    await createReviewTable();
+    await createNotificationTable();
+    console.log("All tables initialized successfully");
   } catch (err) {
     console.error("DB init error:", err.message);
   }
