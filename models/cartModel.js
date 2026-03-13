@@ -15,22 +15,37 @@ const createCartTable = async () => {
   `);
 };
 
+// Get cart with full product details + stock info
 const getCartByUser = async (userId) => {
   const [rows] = await pool.query(
     `SELECT ci.id, ci.quantity, ci.product_id,
-        p.name, p.price, p.images
-      FROM cart_items ci
-      JOIN products p ON p.id = ci.product_id
-      WHERE ci.user_id = ?`,
+      p.name, p.price, p.discount_price, p.quantity AS stock,
+      p.status, p.sku, p.brand
+     FROM cart_items ci
+     JOIN products p ON p.id = ci.product_id
+     WHERE ci.user_id = ?`,
     [userId]
   );
-  return rows.map(r => ({
+  return rows.map((r) => ({
     ...r,
-    images: (() => { try { return JSON.parse(r.images); } catch { return []; } })()
+    unit_price: r.discount_price || r.price,
+    subtotal: parseFloat(r.discount_price || r.price) * r.quantity,
   }));
 };
 
+// Add or update item with stock validation
 const upsertCartItem = async (userId, productId, quantity) => {
+  // Check product exists and is active
+  const [products] = await pool.query(
+    "SELECT id, quantity, status FROM products WHERE id = ?",
+    [productId]
+  );
+  if (!products.length || products[0].status !== 'active') {
+    throw { status: 400, message: 'Product is not available.' };
+  }
+  if (products[0].quantity < quantity) {
+    throw { status: 400, message: `Only ${products[0].quantity} item(s) available in stock.` };
+  }
   await pool.query(
     `INSERT INTO cart_items (user_id, product_id, quantity)
      VALUES (?, ?, ?)
@@ -52,4 +67,11 @@ const clearCart = async (userId) => {
   await pool.query('DELETE FROM cart_items WHERE user_id = ?', [userId]);
 };
 
-module.exports = { getCartByUser, upsertCartItem, removeCartItem, clearCart, createCartTable };
+// Get cart total (used at checkout)
+const getCartTotal = async (userId) => {
+  const items = await getCartByUser(userId);
+  const total = items.reduce((sum, i) => sum + i.subtotal, 0);
+  return { items, total: parseFloat(total.toFixed(2)) };
+};
+
+module.exports = { getCartByUser, upsertCartItem, removeCartItem, clearCart, getCartTotal, createCartTable };
