@@ -12,6 +12,8 @@ const createUsersTable = async () => {
       phone VARCHAR(20),
       role ENUM('customer','admin') DEFAULT 'customer',
       is_active TINYINT(1) DEFAULT 1,
+      reset_otp VARCHAR(10),
+      reset_otp_expires BIGINT,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
@@ -52,6 +54,24 @@ const updateUser = async (id, { name, phone }) => {
   await pool.query('UPDATE users SET name=?, phone=? WHERE id=?', [name, phone, id]);
 };
 
+const updateUserPassword = async (id, newHash) => {
+  await pool.query('UPDATE users SET password_hash=? WHERE id=?', [newHash, id]);
+};
+
+const saveResetOtp = async (id, otp, expiresAt) => {
+  await pool.query(
+    'UPDATE users SET reset_otp=?, reset_otp_expires=? WHERE id=?',
+    [otp, expiresAt, id]
+  );
+};
+
+const clearResetOtp = async (id) => {
+  await pool.query(
+    'UPDATE users SET reset_otp=NULL, reset_otp_expires=NULL WHERE id=?',
+    [id]
+  );
+};
+
 const updateUserStatus = async (id, is_active) => {
   await pool.query('UPDATE users SET is_active=? WHERE id=?', [is_active, id]);
 };
@@ -68,8 +88,11 @@ module.exports = {
   getUserById,
   getAllUsers,
   updateUser,
+  updateUserPassword,
+  saveResetOtp,
+  clearResetOtp,
   updateUserStatus,
   deleteUser,
   verifyPassword,
-    createUsersTable,
+  createUsersTable,
 };
