@@ -1,8 +1,7 @@
 // backend/routes/returnRoutes.js
 const express = require('express');
 const router = express.Router();
-const { authenticateUser } = require('./userRoutes');
-const { authenticateAdmin } = require('../middleware/authMiddleware');
+const { authenticateUser, authenticateAdmin } = require('../middleware/authMiddleware');
 const { createReturn, getReturnsByUser, getReturnById, getAllReturns, updateReturnStatus } = require('../models/returnModel');
 
 // GET /api/returns - user: get my returns
@@ -29,7 +28,7 @@ router.post('/', authenticateUser, async (req, res) => {
   }
 });
 
-// GET /api/returns/:id - user: get specific return
+// GET /api/returns/:id - user/admin: get specific return
 router.get('/:id', authenticateUser, async (req, res) => {
   try {
     const ret = await getReturnById(req.params.id);
@@ -42,7 +41,7 @@ router.get('/:id', authenticateUser, async (req, res) => {
   }
 });
 
-// GET /api/returns/admin/all - admin: all returns (optional ?status=requested)
+// GET /api/returns/admin/all - admin: all returns
 router.get('/admin/all', authenticateAdmin, async (req, res) => {
   try {
     const returns = await getAllReturns(req.query.status || null);
