@@ -40,9 +40,10 @@ const { createSettingsTable } = require("./models/settingsModel");
 const { createShippingTable } = require("./models/shippingModel");
 const { createReturnTable } = require("./models/returnModel");
 const { createBannerTable } = require("./models/bannerModel");
-
+const path = require("path");
 const app = express();
 app.use(express.json());
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Enhanced CORS setup
 const allowedOrigins = [
