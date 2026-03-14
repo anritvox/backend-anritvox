@@ -28,8 +28,8 @@ router.post('/', authenticateUser, async (req, res) => {
     // Apply coupon if provided
     let discount = 0;
     let resolvedCoupon = null;
+    const pool = require('../config/db'); // ensure pool is available for the coupon check
     if (couponCode) {
-      const pool = require('../config/db');
       const [coupons] = await pool.query(
         `SELECT * FROM coupons WHERE code=? AND is_active=1
          AND (valid_from IS NULL OR valid_from <= NOW())
@@ -69,7 +69,9 @@ router.post('/', authenticateUser, async (req, res) => {
     return res.status(201).json({ orderId, message: 'Order placed successfully', total, discount });
   } catch (err) {
     console.error('Place order error:', err);
-    return res.status(500).json({ message: 'Failed to create order' });
+    // 🔴 THIS IS THE FIX: We now send the exact database error back to the frontend
+    const errorMsg = err.sqlMessage || err.message || 'Failed to create order';
+    return res.status(500).json({ message: `Database Error: ${errorMsg}` });
   }
 });
 
