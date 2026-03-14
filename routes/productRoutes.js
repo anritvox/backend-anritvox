@@ -62,15 +62,44 @@ router.get('/slug/:slug', async (req, res) => {
 });
 
 // GET /api/products/:id  - product detail by ID
+// GET /api/products/:id - Fetch a single product safely
 router.get('/:id', async (req, res) => {
   try {
-    const product = await getProductById(req.params.id);
-    if (!product) return res.status(404).json({ error: 'Product not found.' });
-    product.images = await toSignedUrls(product.images);
+    const productId = req.params.id;
+    
+    // 1. Guard against 'undefined' or missing IDs
+    if (!productId || productId === 'undefined' || productId === 'null') {
+      return res.status(400).json({ message: "Invalid Product ID provided" });
+    }
+
+    const pool = require('../config/db'); 
+    
+    // 2. Fetch the product
+    const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [productId]);
+
+    // 3. Handle not found
+    if (rows.length === 0) {
+      return res.status(404).json({ message: "Product not found" });
+    }
+
+    const product = rows[0];
+
+    // 4. Safely parse the images array (MySQL stores it as a string)
+    if (typeof product.images === 'string') {
+      try {
+        product.images = JSON.parse(product.images);
+      } catch (e) {
+        // Fallback if it's just a single URL string and not valid JSON
+        product.images = [product.images]; 
+      }
+    } else if (!product.images) {
+      product.images = [];
+    }
+
     return res.json(product);
   } catch (err) {
-    console.error('Error fetching product:', err);
-    return res.status(500).json({ error: 'Unable to load product.' });
+    console.error("Backend Error fetching product by ID:", err);
+    return res.status(500).json({ message: "Server error fetching product details" });
   }
 });
 
