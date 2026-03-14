@@ -2,7 +2,7 @@
 const pool = require('../config/db');
 
 const createOrdersTables = async () => {
-  // 1. Create the base table
+  // 1. Create the base tables (if they don't exist at all)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS orders (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -17,38 +17,40 @@ const createOrdersTables = async () => {
     )
   `);
 
-  // 2. Safe Column Additions (Removes 'IF NOT EXISTS' which breaks on many MySQL versions)
-  // We wrap each in a try/catch. If the column exists, it throws a safe "Duplicate Column" error and moves on.
-  const addColumn = async (sql) => {
-    try { await pool.query(`ALTER TABLE orders ADD COLUMN ${sql}`); } catch (e) {}
-  };
-
-  await addColumn("subtotal DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER user_id");
-  await addColumn("discount DECIMAL(10,2) DEFAULT 0 AFTER subtotal");
-  await addColumn("total DECIMAL(10,2) NOT NULL AFTER discount");
-  await addColumn("coupon_code VARCHAR(50) AFTER total");
-  await addColumn("payment_status ENUM('pending','paid','failed','refunded') DEFAULT 'pending' AFTER payment_mode");
-  await addColumn("payment_id VARCHAR(255) AFTER payment_status");
-  await addColumn("cancel_reason TEXT AFTER status");
-  await addColumn("notes TEXT AFTER cancel_reason");
-
-  try {
-    await pool.query("ALTER TABLE orders MODIFY COLUMN status ENUM('pending','confirmed','packed','shipped','delivered','cancelled','returned') DEFAULT 'pending'");
-  } catch(e) {}
-
   await pool.query(`
     CREATE TABLE IF NOT EXISTS order_items (
       id INT AUTO_INCREMENT PRIMARY KEY,
       order_id INT NOT NULL,
       product_id INT,
       name VARCHAR(255) NOT NULL,
-      sku VARCHAR(100),
       price DECIMAL(10,2) NOT NULL,
       quantity INT NOT NULL,
-      image VARCHAR(500),
       FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
     )
   `);
+
+  // 2. Safe Column Additions (Patches missing columns dynamically)
+  const addCol = async (table, sql) => {
+    try { await pool.query(`ALTER TABLE ${table} ADD COLUMN ${sql}`); } catch (e) {}
+  };
+
+  // Patch missing columns in 'orders'
+  await addCol("orders", "subtotal DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER user_id");
+  await addCol("orders", "discount DECIMAL(10,2) DEFAULT 0 AFTER subtotal");
+  await addCol("orders", "total DECIMAL(10,2) NOT NULL DEFAULT 0 AFTER discount");
+  await addCol("orders", "coupon_code VARCHAR(50) AFTER total");
+  await addCol("orders", "payment_status ENUM('pending','paid','failed','refunded') DEFAULT 'pending' AFTER payment_mode");
+  await addCol("orders", "payment_id VARCHAR(255) AFTER payment_status");
+  await addCol("orders", "cancel_reason TEXT AFTER status");
+  await addCol("orders", "notes TEXT AFTER cancel_reason");
+
+  try {
+    await pool.query("ALTER TABLE orders MODIFY COLUMN status ENUM('pending','confirmed','packed','shipped','delivered','cancelled','returned') DEFAULT 'pending'");
+  } catch(e) {}
+
+  // 🔴 NEW: Patch missing columns in 'order_items'
+  await addCol("order_items", "sku VARCHAR(100) AFTER name");
+  await addCol("order_items", "image VARCHAR(500) AFTER quantity");
 };
 
 // Create order in a transaction
@@ -67,14 +69,12 @@ const createOrder = async (userId, { items, subtotal, discount, total, couponCod
     const orderId = res.insertId;
     
     for (const item of items) {
-      // Safely extract a single image URL, even if the database has it stored as a JSON array
       let itemImage = item.image || item.images || null;
       if (Array.isArray(itemImage)) itemImage = itemImage[0];
       else if (typeof itemImage === 'string' && itemImage.startsWith('[')) {
         try { itemImage = JSON.parse(itemImage)[0]; } catch(e){}
       }
 
-      // Fallback guarantees we always have a price
       const price = item.unit_price || item.price || 0;
 
       await conn.query(
