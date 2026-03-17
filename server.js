@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const pool = require("./config/db");
+const path = require("path");
 
 // Routes
 const categoryRoutes = require("./routes/categoryRoutes");
@@ -40,7 +41,7 @@ const { createSettingsTable } = require("./models/settingsModel");
 const { createShippingTable } = require("./models/shippingModel");
 const { createReturnTable } = require("./models/returnModel");
 const { createBannerTable } = require("./models/bannerModel");
-const path = require("path");
+
 const app = express();
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
@@ -54,6 +55,7 @@ const allowedOrigins = [
   "https://www.anritvox.com",
   "https://anritvox.com",
 ];
+
 app.use(
   cors({
     origin: function (origin, callback) {
@@ -67,6 +69,42 @@ app.use(
   })
 );
 
+// ─── TEMPORARY MIGRATION ROUTE ───
+// Visit https://your-api-url.com/api/migrate-db to fix your database
+app.get("/api/migrate-db", async (req, res) => {
+  try {
+    console.log("Starting Database Migration...");
+
+    // Step 1: Add new columns
+    await pool.query(`
+      ALTER TABLE warranty_registrations
+      ADD COLUMN IF NOT EXISTS purchase_date DATE DEFAULT NULL,
+      ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(100) DEFAULT NULL,
+      ADD COLUMN IF NOT EXISTS registered_serial VARCHAR(50) DEFAULT NULL
+    `);
+
+    // Step 2: Move old data to unified table
+    await pool.query(`
+      INSERT IGNORE INTO product_serials (product_id, serial_number, status)
+      SELECT product_id, serial, IF(is_used = 1, 'registered', 'available')
+      FROM serial_numbers
+    `);
+
+    // Step 3: Link registrations to serial strings
+    await pool.query(`
+      UPDATE warranty_registrations wr
+      JOIN serial_numbers sn ON wr.serial_number_id = sn.id
+      SET wr.registered_serial = sn.serial
+      WHERE wr.registered_serial IS NULL
+    `);
+
+    res.json({ message: "Database migrated successfully! All old users are now active in the new system." });
+  } catch (err) {
+    console.error("Migration Error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Register all routes
 app.use("/api/categories", categoryRoutes);
 app.use("/api/subcategories", subcategoryRoutes);
@@ -79,7 +117,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/cart", cartRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/addresses", addressRoutes);
-app.use("/api/admin", adminUserRoutes);  // FIXED: was /api/admin/users — routes inside use /users and /orders prefixes
+app.use("/api/admin", adminUserRoutes);
 app.use("/api/wishlist", wishlistRoutes);
 app.use("/api/coupons", couponRoutes);
 app.use("/api/reviews", reviewRoutes);
@@ -92,7 +130,7 @@ app.use("/api/inventory", inventoryRoutes);
 app.use("/api/banners", bannerRoutes);
 
 // Health check
-app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running", version: "3.1" }));
+app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running", version: "3.2" }));
 
 // Initialize DB tables
 const initDB = async () => {
