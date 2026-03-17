@@ -71,7 +71,7 @@ app.use(
 );
 
 // ─── TEMPORARY MIGRATION ROUTE ───
-// Visit https://your-api-url.com/api/migrate-db to fix your database
+// Visit https://your-api-url.com/api/migrate-db once after deployment
 app.get("/api/migrate-db", async (req, res) => {
   try {
     console.log("Starting Database Migration...");
@@ -88,7 +88,6 @@ app.get("/api/migrate-db", async (req, res) => {
     `);
 
     // Step 2: Move old data from serial_numbers to product_serials
-    // Note: We check if serial_numbers exists first
     const [tables] = await pool.query("SHOW TABLES LIKE 'serial_numbers'");
     if (tables.length > 0) {
       await pool.query(`
