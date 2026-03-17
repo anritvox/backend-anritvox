@@ -71,7 +71,7 @@ app.use(
 );
 
 // ─── TEMPORARY MIGRATION ROUTE ───
-// Visit https://your-api-url.com/api/migrate-db once after deployment
+// Visit https://your-api-url.com/api/migrate-db once after deployment to fix your database schema
 app.get("/api/migrate-db", async (req, res) => {
   try {
     console.log("Starting Database Migration...");
@@ -87,16 +87,18 @@ app.get("/api/migrate-db", async (req, res) => {
       ADD COLUMN IF NOT EXISTS registered_serial VARCHAR(50) DEFAULT NULL
     `);
 
-    // Step 2: Move old data from serial_numbers to product_serials
+    // Step 2: Move old data from serial_numbers to product_serials if it exists
     const [tables] = await pool.query("SHOW TABLES LIKE 'serial_numbers'");
+    let migratedCount = 0;
     if (tables.length > 0) {
-      await pool.query(`
+      const [migrationRes] = await pool.query(`
         INSERT IGNORE INTO product_serials (product_id, serial_number, status)
         SELECT product_id, serial, IF(is_used = 1, 'registered', 'available')
         FROM serial_numbers
       `);
+      migratedCount = migrationRes.affectedRows;
 
-      // Step 3: Link registrations to serial strings
+      // Step 3: Map old registrations to the actual string serial
       await pool.query(`
         UPDATE warranty_registrations wr
         JOIN serial_numbers sn ON wr.serial_number_id = sn.id
@@ -105,7 +107,14 @@ app.get("/api/migrate-db", async (req, res) => {
       `);
     }
 
-    res.json({ message: "Database migrated successfully! All old users are now active in the new system." });
+    res.json({ 
+      status: "success", 
+      message: "Database migrated successfully! All old users are now active in the new system.",
+      details: {
+        migrated_serials: migratedCount,
+        unified_system: "active"
+      }
+    });
   } catch (err) {
     console.error("Migration Error:", err.message);
     res.status(500).json({ error: err.message });
@@ -137,7 +146,12 @@ app.use("/api/inventory", inventoryRoutes);
 app.use("/api/banners", bannerRoutes);
 
 // Health check
-app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running", version: "3.2" }));
+app.get("/", (req, res) => res.json({ 
+  status: "ok", 
+  message: "Anritvox API running", 
+  version: "3.2.1",
+  environment: process.env.NODE_ENV || "development"
+}));
 
 // Initialize DB tables
 const initDB = async () => {
