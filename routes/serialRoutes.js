@@ -37,5 +37,13 @@ router.get('/check/:serial', async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
-
+// Admin: Get All Serials (Used by fetchAllSerialRecords in api.js)
+router.get('/all', authenticateAdmin, async (req, res) => {
+  try {
+    const [rows] = await require('../config/db').query('SELECT * FROM product_serials ORDER BY created_at DESC');
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 module.exports = router;
