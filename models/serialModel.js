@@ -1,16 +1,17 @@
 const pool = require('../config/db');
 
-// Professional Serial Format: PREFIX-YYMM-UNIQUE (e.g., AV-2405-7X2P9)
-const generateProfessionalSerial = (prefix = 'AV') => {
-  const now = new Date();
-  const year = now.getFullYear().toString().slice(-2);
-  const month = (now.getMonth() + 1).toString().padStart(2, '0');
+// Professional Serial Format: 4 Prefix + 6 Random (e.g., ABCD123456)
+const generateProfessionalSerial = (prefix = 'ANRI') => {
+  // Ensure the prefix is exactly 4 characters and uppercase
+  const cleanPrefix = prefix.toString().substring(0, 4).toUpperCase().padEnd(4, 'X');
+  
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluded O, I, 1, 0 to avoid confusion
   let unique = '';
   for (let i = 0; i < 6; i++) {
     unique += chars.charAt(Math.floor(Math.random() * chars.length));
   }
-  return `${prefix}-${year}${month}-${unique}`;
+  
+  return `${cleanPrefix}${unique}`; // Example: ABCD9X2P7M
 };
 
 const createSerialTable = async () => {
@@ -30,7 +31,9 @@ const createSerialTable = async () => {
 
 const addSerials = async (productId, count, batchNumber, prefix) => {
   const serials = [];
-  for (let i = 0; i < count; i++) {
+  const totalCount = parseInt(count, 10);
+  
+  for (let i = 0; i < totalCount; i++) {
     const sn = generateProfessionalSerial(prefix);
     serials.push([productId, sn, 'available', batchNumber]);
   }
@@ -44,23 +47,24 @@ const addSerials = async (productId, count, batchNumber, prefix) => {
       [serials]
     );
     await conn.commit();
-    return serials.map(s => s[1]);
+    return serials.map(s => s[1]); // Return generated serials
   } catch (err) {
     await conn.rollback();
-    // If duplicate serial (rare), retry once or throw
-    throw err;
+    // Re-throw the error so the controller can send a 500 response
+    throw new Error(`Failed to generate serials: ${err.message}`);
   } finally {
     conn.release();
   }
 };
 
 const checkSerial = async (serialNumber) => {
+  const s = serialNumber.trim().toUpperCase(); // Ensure uppercase check
   const [rows] = await pool.query(
     `SELECT ps.*, p.name as product_name, p.images, p.brand, p.warranty_period
      FROM product_serials ps
      JOIN products p ON ps.product_id = p.id
      WHERE ps.serial_number = ?`,
-    [serialNumber]
+    [s]
   );
   return rows[0];
 };
