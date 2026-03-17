@@ -18,7 +18,6 @@ const validateSerial = async (serial) => {
   const rec = rows[0];
 
     
-  }
   return rec;
 };
 
