@@ -16,8 +16,8 @@ const validateSerial = async (serial) => {
   if (rows.length === 0) throw { status: 404, message: "Serial number not found in our authentic database." };
   
   const rec = rows[0];
-  if (rec.status === 'registered' || rec.status === 'sold') {
-    throw { status: 400, message: "This serial number is already registered for warranty." };
+
+    
   }
   return rec;
 };
@@ -25,6 +25,10 @@ const validateSerial = async (serial) => {
 const registerWarranty = async ({ serialNumber, productId, customerName, email, phone, purchaseDate, invoiceNumber }) => {
   const rec = await validateSerial(serialNumber);
   if (rec.product_id !== Number(productId)) throw { status: 400, message: "Product mismatch for given serial number." };
+  // Now check if it's available for registration (not already registered or sold)
+  if (rec.status === 'registered' || rec.status === 'sold') {
+    throw { status: 400, message: "This serial number is already registered for warranty." };
+  }
 
   const conn = await pool.getConnection();
   try {
