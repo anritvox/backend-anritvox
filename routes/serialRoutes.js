@@ -1,15 +1,23 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateAdmin } = require('../middleware/authMiddleware');
-const { addSerials, checkSerial, generateProfessionalSerial } = require('../models/serialModel');
+const { addSerials, checkSerial } = require('../models/serialModel');
 
 // Admin: Bulk Generate Serials
 router.post('/generate', authenticateAdmin, async (req, res) => {
   try {
     const { productId, count, batchNumber, prefix } = req.body;
-    if (!productId || !count) return res.status(400).json({ message: 'Product ID and Count are required' });
     
-    const serials = await addSerials(productId, count, batchNumber, prefix || 'AV');
+    if (!productId || !count) {
+        return res.status(400).json({ message: 'Product ID and Count are required' });
+    }
+
+    if (prefix && prefix.length !== 4) {
+        return res.status(400).json({ message: 'Prefix must be exactly 4 characters long' });
+    }
+    
+    // Pass the 4-char prefix, defaults to 'ANRI' if not provided
+    const serials = await addSerials(productId, count, batchNumber, prefix || 'ANRI');
     res.status(201).json({ message: `${count} Serials generated successfully`, serials });
   } catch (err) {
     res.status(500).json({ message: err.message });
