@@ -41,6 +41,7 @@ const { createSettingsTable } = require("./models/settingsModel");
 const { createShippingTable } = require("./models/shippingModel");
 const { createReturnTable } = require("./models/returnModel");
 const { createBannerTable } = require("./models/bannerModel");
+const { createSerialTable } = require("./models/serialModel");
 
 const app = express();
 app.use(express.json());
@@ -75,7 +76,10 @@ app.get("/api/migrate-db", async (req, res) => {
   try {
     console.log("Starting Database Migration...");
 
-    // Step 1: Add new columns
+    // Step 0: Ensure target tables exist
+    await createSerialTable();
+
+    // Step 1: Add new columns to warranty_registrations
     await pool.query(`
       ALTER TABLE warranty_registrations
       ADD COLUMN IF NOT EXISTS purchase_date DATE DEFAULT NULL,
@@ -83,20 +87,24 @@ app.get("/api/migrate-db", async (req, res) => {
       ADD COLUMN IF NOT EXISTS registered_serial VARCHAR(50) DEFAULT NULL
     `);
 
-    // Step 2: Move old data to unified table
-    await pool.query(`
-      INSERT IGNORE INTO product_serials (product_id, serial_number, status)
-      SELECT product_id, serial, IF(is_used = 1, 'registered', 'available')
-      FROM serial_numbers
-    `);
+    // Step 2: Move old data from serial_numbers to product_serials
+    // Note: We check if serial_numbers exists first
+    const [tables] = await pool.query("SHOW TABLES LIKE 'serial_numbers'");
+    if (tables.length > 0) {
+      await pool.query(`
+        INSERT IGNORE INTO product_serials (product_id, serial_number, status)
+        SELECT product_id, serial, IF(is_used = 1, 'registered', 'available')
+        FROM serial_numbers
+      `);
 
-    // Step 3: Link registrations to serial strings
-    await pool.query(`
-      UPDATE warranty_registrations wr
-      JOIN serial_numbers sn ON wr.serial_number_id = sn.id
-      SET wr.registered_serial = sn.serial
-      WHERE wr.registered_serial IS NULL
-    `);
+      // Step 3: Link registrations to serial strings
+      await pool.query(`
+        UPDATE warranty_registrations wr
+        JOIN serial_numbers sn ON wr.serial_number_id = sn.id
+        SET wr.registered_serial = sn.serial
+        WHERE wr.registered_serial IS NULL
+      `);
+    }
 
     res.json({ message: "Database migrated successfully! All old users are now active in the new system." });
   } catch (err) {
@@ -147,6 +155,7 @@ const initDB = async () => {
     await createShippingTable();
     await createReturnTable();
     await createBannerTable();
+    await createSerialTable();
     console.log("All tables initialized successfully");
   } catch (err) {
     console.error("DB init error:", err.message);
