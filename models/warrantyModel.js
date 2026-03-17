@@ -4,7 +4,7 @@ const validateSerial = async (serial) => {
   const s = serial.trim().toUpperCase();
   const [rows] = await pool.query(
     `SELECT ps.id AS serial_id, ps.product_id, ps.serial_number, ps.status, 
-            p.name AS product_name, p.brand, p.warranty_period, p.images, 
+            p.name AS product_name, p.brand, p.warranty_period, 
             c.id AS category_id, c.name AS category_name
      FROM product_serials ps
      JOIN products p ON ps.product_id = p.id
