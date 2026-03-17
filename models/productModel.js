@@ -40,7 +40,9 @@ const initProductsTable = async () => {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
   `);
+  
   // Add new columns to existing table if missing (MySQL 5.7 compatible)
+  await addColIfMissing('products', 'warranty_period', 'VARCHAR(100) DEFAULT NULL AFTER brand');
   await addColIfMissing('products', 'slug', 'VARCHAR(255) AFTER name');
   await addColIfMissing('products', 'sku', 'VARCHAR(100) AFTER slug');
   await addColIfMissing('products', 'brand', 'VARCHAR(100) AFTER sku');
