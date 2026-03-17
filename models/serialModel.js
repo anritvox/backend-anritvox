@@ -2,16 +2,13 @@ const pool = require('../config/db');
 
 // Professional Serial Format: 4 Prefix + 6 Random (e.g., ABCD123456)
 const generateProfessionalSerial = (prefix = 'ANRI') => {
-  // Ensure the prefix is exactly 4 characters and uppercase
   const cleanPrefix = prefix.toString().substring(0, 4).toUpperCase().padEnd(4, 'X');
-  
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluded O, I, 1, 0 to avoid confusion
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; 
   let unique = '';
   for (let i = 0; i < 6; i++) {
     unique += chars.charAt(Math.floor(Math.random() * chars.length));
   }
-  
-  return `${cleanPrefix}${unique}`; // Example: ABCD9X2P7M
+  return `${cleanPrefix}${unique}`;
 };
 
 const createSerialTable = async () => {
@@ -38,7 +35,6 @@ const addSerials = async (productId, count, batchNumber, prefix) => {
     serials.push([productId, sn, 'available', batchNumber]);
   }
 
-  // Use a transaction for bulk insertion
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
@@ -47,10 +43,9 @@ const addSerials = async (productId, count, batchNumber, prefix) => {
       [serials]
     );
     await conn.commit();
-    return serials.map(s => s[1]); // Return generated serials
+    return serials.map(s => s[1]); 
   } catch (err) {
     await conn.rollback();
-    // Re-throw the error so the controller can send a 500 response
     throw new Error(`Failed to generate serials: ${err.message}`);
   } finally {
     conn.release();
@@ -58,7 +53,7 @@ const addSerials = async (productId, count, batchNumber, prefix) => {
 };
 
 const checkSerial = async (serialNumber) => {
-  const s = serialNumber.trim().toUpperCase(); // Ensure uppercase check
+  const s = serialNumber.trim().toUpperCase(); 
   const [rows] = await pool.query(
     `SELECT ps.*, p.name as product_name, p.images, p.brand, p.warranty_period
      FROM product_serials ps
@@ -69,6 +64,15 @@ const checkSerial = async (serialNumber) => {
   return rows[0];
 };
 
+// ADDED: Fetch serials by product ID for the Admin Dashboard
+const getSerialsByProduct = async (productId) => {
+  const [rows] = await pool.query(
+    'SELECT * FROM product_serials WHERE product_id = ? ORDER BY created_at DESC',
+    [productId]
+  );
+  return rows;
+};
+
 const updateSerialStatus = async (id, status) => {
   await pool.query('UPDATE product_serials SET status = ? WHERE id = ?', [status, id]);
 };
@@ -77,6 +81,7 @@ module.exports = {
   createSerialTable,
   addSerials,
   checkSerial,
+  getSerialsByProduct, // Make sure to export it
   updateSerialStatus,
   generateProfessionalSerial
 };
