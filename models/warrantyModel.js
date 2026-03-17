@@ -44,6 +44,7 @@ const registerWarranty = async ({
   purchaseDate,
   invoiceNumber
 }) => {
+  // rec contains the exact database-validated values
   const rec = await validateSerial(serialNumber);
 
   if (rec.product_id !== Number(productId)) {
@@ -54,18 +55,18 @@ const registerWarranty = async ({
   try {
     await conn.beginTransaction();
 
-    // Insert into registrations
+    // FIXED: Use rec.serial_number to ensure the correct uppercase standard is inserted
     const [result] = await conn.query(
       `INSERT INTO warranty_registrations
          (registered_serial, product_id, user_name, user_email, user_phone, purchase_date, invoice_number, status)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'accepted')`,
-      [serialNumber, productId, customerName, email, phone, purchaseDate, invoiceNumber]
+      [rec.serial_number, productId, customerName, email, phone, purchaseDate, invoiceNumber]
     );
 
-    // Update status in the unified serials table
+    // FIXED: Use rec.serial_number for the update query
     await conn.query(
       `UPDATE product_serials SET status = 'registered' WHERE serial_number = ?`,
-      [serialNumber]
+      [rec.serial_number]
     );
 
     await conn.commit();
