@@ -3,12 +3,12 @@ const pool = require('../config/db');
 // Generates exactly: 4-Char Prefix + 6 Random Chars
 const generateProfessionalSerial = (prefix = 'ANRI') => {
   const cleanPrefix = prefix.toString().substring(0, 4).toUpperCase().padEnd(4, 'X');
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; 
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let unique = '';
   for (let i = 0; i < 6; i++) {
     unique += chars.charAt(Math.floor(Math.random() * chars.length));
   }
-  return `${cleanPrefix}${unique}`; 
+  return `${cleanPrefix}${unique}`;
 };
 
 const createSerialTable = async () => {
@@ -29,18 +29,17 @@ const createSerialTable = async () => {
 const addSerials = async (productId, count, batchNumber, prefix) => {
   const serials = [];
   const totalCount = parseInt(count, 10);
-  
+
   for (let i = 0; i < totalCount; i++) {
     const sn = generateProfessionalSerial(prefix);
     serials.push([productId, sn, 'available', batchNumber]);
   }
-
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
     await conn.query('INSERT INTO product_serials (product_id, serial_number, status, batch_number) VALUES ?', [serials]);
     await conn.commit();
-    return serials.map(s => s[1]); 
+    return serials.map(s => s[1]);
   } catch (err) {
     await conn.rollback();
     throw new Error(`Failed to generate serials: ${err.message}`);
@@ -49,14 +48,13 @@ const addSerials = async (productId, count, batchNumber, prefix) => {
   }
 };
 
-// ADDED: Query to get serials for the dashboard
 const getSerialsByProduct = async (productId) => {
   const [rows] = await pool.query('SELECT * FROM product_serials WHERE product_id = ? ORDER BY created_at DESC', [productId]);
   return rows;
 };
 
 const checkSerial = async (serialNumber) => {
-  const s = serialNumber.trim().toUpperCase(); 
+  const s = serialNumber.trim().toUpperCase();
   const [rows] = await pool.query(
     `SELECT ps.*, p.name as product_name, p.images, p.brand, p.warranty_period
      FROM product_serials ps
@@ -75,6 +73,4 @@ const deleteSerial = async (id) => {
   await pool.query('DELETE FROM product_serials WHERE id = ?', [id]);
 };
 
-
-module.exports = { createSerialTable, addSerials, checkSerial, getSerialsByProduct, updateSerialStatus, generateProfessionalSerial };
 module.exports = { createSerialTable, addSerials, checkSerial, getSerialsByProduct, updateSerialStatus, deleteSerial, generateProfessionalSerial };
