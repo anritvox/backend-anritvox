@@ -4,9 +4,11 @@ const CLOUDFRONT_BASE_URL = process.env.CLOUDFRONT_BASE_URL;
 
 const validateSerial = async (serial) => {
   const s = serial.trim().toUpperCase();
+  
+  // 1. Fetch the product details (Removed p.images and p.warranty_period from here)
   const [rows] = await pool.query(
     `SELECT ps.id AS serial_id, ps.product_id, ps.serial_number, ps.status, 
-            p.name AS product_name, p.brand, p.warranty_period, 
+            p.name AS product_name, p.brand,
             c.id AS category_id, c.name AS category_name
      FROM product_serials ps
      JOIN products p ON ps.product_id = p.id
@@ -19,6 +21,14 @@ const validateSerial = async (serial) => {
   
   const rec = rows[0];
 
+  // 2. Fetch the images from the product_images table
+  const [imageRows] = await pool.query(
+    'SELECT file_path FROM product_images WHERE product_id = ?',
+    [rec.product_id]
+  );
+
+  // 3. Attach the images to the record, formatting them into full URLs
+  rec.images = imageRows.map((img) => `${CLOUDFRONT_BASE_URL}/${img.file_path}`);
     
   return rec;
 };
