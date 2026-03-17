@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateAdmin } = require('../middleware/authMiddleware');
-const { addSerials, checkSerial, getSerialsByProduct } = require('../models/serialModel');
+const { addSerials, checkSerial, getSerialsByProduct, updateSerialStatus, deleteSerial } = require('../models/serialModel');
 
 // Admin: Bulk Generate Serials
 router.post('/generate', authenticateAdmin, async (req, res) => {
@@ -43,7 +43,28 @@ router.get('/all', authenticateAdmin, async (req, res) => {
     const [rows] = await require('../config/db').query('SELECT * FROM product_serials ORDER BY created_at DESC');
     res.json(rows);
   } catch (err) {
+    
+// Admin: Update Serial Status
+router.put('/:id', authenticateAdmin, async (req, res) => {
+  try {
+    const { status } = req.body;
+    await updateSerialStatus(req.params.id, status);
+    res.json({ message: 'Serial status updated successfully' });
+  } catch (err) {
     res.status(500).json({ message: err.message });
+  }
+});
+
+// Admin: Delete Serial
+router.delete('/:id', authenticateAdmin, async (req, res) => {
+  try {
+    await deleteSerial(req.params.id);
+    res.json({ message: 'Serial deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+res.status(500).json({ message: err.message });
   }
 });
 module.exports = router;
