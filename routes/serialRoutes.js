@@ -9,7 +9,7 @@ router.post('/generate', authenticateAdmin, async (req, res) => {
     const { productId, count, batchNumber, prefix } = req.body;
     if (!productId || !count) return res.status(400).json({ message: 'Product ID and Count are required' });
     if (prefix && prefix.length !== 4) return res.status(400).json({ message: 'Prefix must be exactly 4 characters long' });
-    
+
     const serials = await addSerials(productId, count, batchNumber, prefix || 'ANRI');
     res.status(201).json({ message: `${count} Serials generated successfully`, serials });
   } catch (err) {
@@ -17,7 +17,7 @@ router.post('/generate', authenticateAdmin, async (req, res) => {
   }
 });
 
-// Admin: Get Serials by Product (FIX FOR THE HTML PARSE ERROR)
+// Admin: Get Serials by Product
 router.get('/product/:productId', authenticateAdmin, async (req, res) => {
   try {
     const serials = await getSerialsByProduct(req.params.productId);
@@ -37,13 +37,17 @@ router.get('/check/:serial', async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
-// Admin: Get All Serials (Used by fetchAllSerialRecords in api.js)
+
+// Admin: Get All Serials
 router.get('/all', authenticateAdmin, async (req, res) => {
   try {
     const [rows] = await require('../config/db').query('SELECT * FROM product_serials ORDER BY created_at DESC');
     res.json(rows);
   } catch (err) {
-    
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Admin: Update Serial Status
 router.put('/:id', authenticateAdmin, async (req, res) => {
   try {
@@ -64,7 +68,5 @@ router.delete('/:id', authenticateAdmin, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
-res.status(500).json({ message: err.message });
-  }
-});
+
 module.exports = router;
