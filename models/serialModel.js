@@ -71,4 +71,10 @@ const updateSerialStatus = async (id, status) => {
   await pool.query('UPDATE product_serials SET status = ? WHERE id = ?', [status, id]);
 };
 
+const deleteSerial = async (id) => {
+  await pool.query('DELETE FROM product_serials WHERE id = ?', [id]);
+};
+
+
 module.exports = { createSerialTable, addSerials, checkSerial, getSerialsByProduct, updateSerialStatus, generateProfessionalSerial };
+module.exports = { createSerialTable, addSerials, checkSerial, getSerialsByProduct, updateSerialStatus, deleteSerial, generateProfessionalSerial };
