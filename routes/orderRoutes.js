@@ -1,4 +1,3 @@
-// backend/routes/orderRoutes.js
 // Orders: checkout, customer history, admin management
 const express = require('express');
 const router = express.Router();
@@ -18,7 +17,7 @@ router.post('/', authenticateUser, async (req, res) => {
 
     // Verify address belongs to user
     const addresses = await getAddressesByUser(req.user.id);
-    const address = addresses.find((a) => a.id === parseInt(addressId));
+    const address = addresses.find((a) => a.id === parseInt(addressId, 10));
     if (!address) return res.status(404).json({ message: 'Address not found' });
 
     // Get cart
@@ -50,14 +49,11 @@ router.post('/', authenticateUser, async (req, res) => {
       }
     }
 
-    const subtotal = cartTotal;
-    const total = parseFloat((subtotal - discount).toFixed(2));
-
+    // Call the securely rewritten createOrder model
+    // We intentionally do NOT pass frontend totals here anymore.
     const orderId = await createOrder(req.user.id, {
       items,
-      subtotal,
       discount,
-      total,
       couponCode: resolvedCoupon,
       addressSnapshot: address,
       deliveryType: deliveryType || 'standard',
@@ -66,12 +62,20 @@ router.post('/', authenticateUser, async (req, res) => {
     });
 
     await clearCart(req.user.id);
-    return res.status(201).json({ orderId, message: 'Order placed successfully', total, discount });
+    return res.status(201).json({ orderId, message: 'Order placed successfully', discount });
   } catch (err) {
     console.error('Place order error:', err);
-    // 🔴 THIS IS THE FIX: We now send the exact database error back to the frontend
+    
+    // SECURITY FIX: Gracefully handle out-of-stock errors from the Database Lock
+    if (err.message && err.message.includes('Insufficient stock')) {
+      return res.status(400).json({ message: err.message });
+    }
+    if (err.message && err.message.includes('not found')) {
+      return res.status(400).json({ message: 'One or more products are no longer available.' });
+    }
+
     const errorMsg = err.sqlMessage || err.message || 'Failed to create order';
-    return res.status(500).json({ message: `Database Error: ${errorMsg}` });
+    return res.status(500).json({ message: `Checkout Error: ${errorMsg}` });
   }
 });
 
