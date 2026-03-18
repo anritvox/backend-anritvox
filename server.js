@@ -4,9 +4,6 @@ const cors = require("cors");
 const pool = require("./config/db");
 const path = require("path");
 
-// Middleware
-const { requireAuth, requireAdmin } = require("./middleware/authMiddleware");
-
 // Routes
 const categoryRoutes = require("./routes/categoryRoutes");
 const subcategoryRoutes = require("./routes/subcategoryRoutes");
@@ -30,6 +27,9 @@ const shippingRoutes = require("./routes/shippingRoutes");
 const returnRoutes = require("./routes/returnRoutes");
 const inventoryRoutes = require("./routes/inventoryRoutes");
 const bannerRoutes = require("./routes/bannerRoutes");
+
+// Auth Middleware (Imported here for protected routes like migrate-db)
+const { requireAuth, requireAdmin } = require("./middleware/authMiddleware");
 
 // Models for table initialization
 const { createUsersTable } = require("./models/userModel");
@@ -73,8 +73,8 @@ app.use(
   })
 );
 
-// ─── TEMPORARY MIGRATION ROUTE ───
-// Secured with requireAuth and requireAdmin to prevent public database tampering
+// ─── SECURE DATABASE MIGRATION ROUTE ───
+// This route is now protected. Only authenticated admins can trigger it.
 app.get("/api/migrate-db", requireAuth, requireAdmin, async (req, res) => {
   try {
     console.log("Starting Database Migration...");
