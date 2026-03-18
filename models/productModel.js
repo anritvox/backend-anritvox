@@ -1,4 +1,3 @@
-// backend/models/productModel.js
 const pool = require('../config/db');
 require('dotenv').config();
 const CLOUDFRONT_BASE_URL = process.env.CLOUDFRONT_BASE_URL;
@@ -41,7 +40,7 @@ const initProductsTable = async () => {
     )
   `);
   
-  // Add new columns to existing table if missing (MySQL 5.7 compatible)
+  // Add new columns to existing table if missing
   await addColIfMissing('products', 'warranty_period', 'VARCHAR(100) DEFAULT NULL AFTER brand');
   await addColIfMissing('products', 'slug', 'VARCHAR(255) AFTER name');
   await addColIfMissing('products', 'sku', 'VARCHAR(100) AFTER slug');
@@ -51,8 +50,13 @@ const initProductsTable = async () => {
   await addColIfMissing('products', 'meta_title', 'VARCHAR(255) AFTER subcategory_id');
   await addColIfMissing('products', 'meta_description', 'TEXT AFTER meta_title');
   await addColIfMissing('products', 'tags', 'VARCHAR(500) AFTER meta_description');
+
+  // Performance Indexes for fast e-commerce searching and routing
+  try { await pool.query(`ALTER TABLE products ADD UNIQUE INDEX idx_slug (slug)`); } catch(e) {}
+  try { await pool.query(`ALTER TABLE products ADD INDEX idx_status (status)`); } catch(e) {}
+  try { await pool.query(`ALTER TABLE products ADD INDEX idx_category (category_id)`); } catch(e) {}
 };
-initProductsTable().catch(console.error);
+// Removed standalone catch to let server.js manage DB init sequences.
 
 // ─── HELPERS ─────────────────────────────────────────────────────────
 const attachImages = async (rows) => {
@@ -100,16 +104,16 @@ const getActiveProducts = async ({ category_id, subcategory_id, min_price, max_p
   const params = [];
   if (category_id) { sql += ' AND p.category_id = ?'; params.push(category_id); }
   if (subcategory_id) { sql += ' AND p.subcategory_id = ?'; params.push(subcategory_id); }
-  if (min_price) { sql += ' AND p.price >= ?'; params.push(min_price); }
-  if (max_price) { sql += ' AND p.price <= ?'; params.push(max_price); }
+  if (min_price) { sql += ' AND (IFNULL(p.discount_price, p.price)) >= ?'; params.push(min_price); }
+  if (max_price) { sql += ' AND (IFNULL(p.discount_price, p.price)) <= ?'; params.push(max_price); }
   if (search) {
     sql += ' AND (p.name LIKE ? OR p.sku LIKE ? OR p.tags LIKE ? OR p.brand LIKE ?)';
     const term = `%${search}%`;
     params.push(term, term, term, term);
   }
   const sortOptions = {
-    price_asc: 'p.price ASC',
-    price_desc: 'p.price DESC',
+    price_asc: 'IFNULL(p.discount_price, p.price) ASC',
+    price_desc: 'IFNULL(p.discount_price, p.price) DESC',
     newest: 'p.created_at DESC',
     name_asc: 'p.name ASC',
   };
@@ -186,19 +190,19 @@ const createProduct = async (data) => {
 const updateProduct = async (id, data) => {
   const {
     name, slug, sku, brand, description,
-    price, discount_price,
+    price, discount_price, quantity,
     category_id, subcategory_id,
     meta_title, meta_description, tags,
   } = data;
   await pool.query(
     `UPDATE products SET
      name=?, slug=?, sku=?, brand=?, description=?,
-     price=?, discount_price=?,
+     price=?, discount_price=?, quantity=?,
      category_id=?, subcategory_id=?,
      meta_title=?, meta_description=?, tags=?
      WHERE id=?`,
     [name, slug || null, sku || null, brand || null, description || null,
-     price, discount_price || null,
+     price, discount_price || null, quantity,
      category_id, subcategory_id || null,
      meta_title || null, meta_description || null, tags || null, id]
   );
@@ -255,6 +259,7 @@ const deleteProduct = async (id) => {
 };
 
 module.exports = {
+  initProductsTable,
   getAllProducts,
   getActiveProducts,
   getProductById,
