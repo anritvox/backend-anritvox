@@ -87,6 +87,18 @@ const initDB = async () => {
     return false;
   }
 };
+// Helper: safely add a column if it doesn't exist (compatible with all MySQL versions)
+const safeAddColumn = async (table, column, definition) => {
+  try {
+    await pool.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  } catch (err) {
+    if (err.code === 'ER_DUP_FIELDNAME') {
+      // Column already exists - that's fine
+    } else {
+      throw err;
+    }
+  }
+};
 // SECURE DATABASE MIGRATION & INITIALIZATION ROUTE
 app.get("/api/migrate-db", async (req, res) => {
   try {
@@ -97,15 +109,12 @@ app.get("/api/migrate-db", async (req, res) => {
     console.log("Starting Database Migration/Initialization...");
     // Step 0: Ensure all target tables exist (Run initDB)
     await initDB();
-    // Step 1: Add new columns to warranty_registrations
-    await pool.query(`
-      ALTER TABLE warranty_registrations
-      ADD COLUMN IF NOT EXISTS purchase_date DATE DEFAULT NULL,
-      ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(100) DEFAULT NULL,
-      ADD COLUMN IF NOT EXISTS registered_serial VARCHAR(50) DEFAULT NULL
-    `);
+    // Step 1: Add new columns to warranty_registrations (one at a time for compatibility)
+    await safeAddColumn("warranty_registrations", "purchase_date", "DATE DEFAULT NULL");
+    await safeAddColumn("warranty_registrations", "invoice_number", "VARCHAR(100) DEFAULT NULL");
+    await safeAddColumn("warranty_registrations", "registered_serial", "VARCHAR(50) DEFAULT NULL");
     // Step 1.5: Ensure Banner table has description column
-    await pool.query(`ALTER TABLE banners ADD COLUMN IF NOT EXISTS description TEXT DEFAULT NULL`);
+    await safeAddColumn("banners", "description", "TEXT DEFAULT NULL");
     // Step 2: Move old data from serial_numbers to product_serials if it exists
     const [tables] = await pool.query("SHOW TABLES LIKE 'serial_numbers'");
     let migratedCount = 0;
