@@ -175,6 +175,7 @@ app.get("/", (req, res) => res.json({
   environment: process.env.NODE_ENV || "development"
 }));
 // Start server - works for Railway (persistent server) and local development
+// This change allows Vercel to handle the server correctly
 if (process.env.NODE_ENV !== 'production') {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, async () => {
@@ -183,5 +184,5 @@ if (process.env.NODE_ENV !== 'production') {
   });
 }
 
-// Export the app for Serverless Deployment (Vercel/AWS)
+// Critical for Vercel:
 module.exports = app;
