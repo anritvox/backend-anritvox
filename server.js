@@ -1,3 +1,8 @@
+const { requireAuth, requireAdmin } = require("./middleware/authMiddleware");
+// Secure the route
+app.get("/api/migrate-db", requireAuth, requireAdmin, async (req, res) => {
+    // ... existing migration logic ...
+});
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
