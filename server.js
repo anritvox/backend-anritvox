@@ -1,13 +1,11 @@
-const { requireAuth, requireAdmin } = require("./middleware/authMiddleware");
-// Secure the route
-app.get("/api/migrate-db", requireAuth, requireAdmin, async (req, res) => {
-    // ... existing migration logic ...
-});
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const pool = require("./config/db");
 const path = require("path");
+
+// Middleware
+const { requireAuth, requireAdmin } = require("./middleware/authMiddleware");
 
 // Routes
 const categoryRoutes = require("./routes/categoryRoutes");
@@ -76,8 +74,8 @@ app.use(
 );
 
 // ─── TEMPORARY MIGRATION ROUTE ───
-// Visit https://your-api-url.com/api/migrate-db once after deployment to fix your database schema
-app.get("/api/migrate-db", async (req, res) => {
+// Secured with requireAuth and requireAdmin to prevent public database tampering
+app.get("/api/migrate-db", requireAuth, requireAdmin, async (req, res) => {
   try {
     console.log("Starting Database Migration...");
 
