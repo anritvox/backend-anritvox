@@ -1,4 +1,3 @@
-// backend/routes/cartRoutes.js
 // Cart: add, update, remove, clear, get - all require user auth
 const express = require('express');
 const router = express.Router();
@@ -20,10 +19,15 @@ router.get('/', authenticateUser, async (req, res) => {
 router.post('/', authenticateUser, async (req, res) => {
   try {
     const { productId, quantity } = req.body;
-    if (!productId || !quantity || quantity < 1) {
-      return res.status(400).json({ message: 'productId and quantity (>=1) are required' });
+    
+    // SECURITY FIX: Prevent string/decimal quantity injections
+    const parsedQuantity = parseInt(quantity, 10);
+    
+    if (!productId || isNaN(parsedQuantity) || parsedQuantity < 1) {
+      return res.status(400).json({ message: 'productId and a valid quantity (>=1) are required' });
     }
-    const items = await upsertCartItem(req.user.id, productId, quantity);
+    
+    const items = await upsertCartItem(req.user.id, productId, parsedQuantity);
     const total = items.reduce((s, i) => s + i.subtotal, 0);
     return res.json({ items, total: parseFloat(total.toFixed(2)) });
   } catch (err) {
