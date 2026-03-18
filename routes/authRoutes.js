@@ -1,8 +1,8 @@
-// backend/routes/authRoutes.js
 // Admin auth: login + change-password + profile
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
+const pool = require('../config/db');
 const { getAdminByEmail, getAdminById, verifyPassword, updateAdminPassword } = require("../models/adminModel");
 const { authenticateAdmin } = require('../middleware/authMiddleware');
 const router = express.Router();
@@ -50,7 +50,13 @@ router.put("/me", authenticateAdmin, async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ message: "Email is required" });
-    const pool = require('../config/db');
+    
+    // SECURITY FIX: Check for duplicate email to prevent database crash
+    const [existing] = await pool.query('SELECT id FROM admin_users WHERE email = ? AND id != ?', [email, req.admin.id]);
+    if (existing.length > 0) {
+      return res.status(409).json({ message: "This email is already registered to another admin." });
+    }
+
     await pool.query('UPDATE admin_users SET email=? WHERE id=?', [email, req.admin.id]);
     return res.json({ message: "Profile updated", email });
   } catch (err) {
@@ -71,8 +77,10 @@ router.post("/change-password", authenticateAdmin, async (req, res) => {
     }
     const admin = await getAdminByEmail(req.admin.email);
     if (!admin) return res.status(404).json({ message: "Admin not found" });
+    
     const valid = await verifyPassword(currentPassword, admin.password_hash);
     if (!valid) return res.status(401).json({ message: "Current password is incorrect" });
+    
     const hash = await bcrypt.hash(newPassword, 10);
     await updateAdminPassword(admin.id, hash);
     res.json({ message: "Password updated successfully" });
