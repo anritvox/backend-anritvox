@@ -56,6 +56,7 @@ const allowedOrigins = [
   "https://www.anritvox.com",
   "https://anritvox.com",
 ];
+
 app.use(
   cors({
     origin: function (origin, callback) {
@@ -69,17 +70,41 @@ app.use(
   })
 );
 
-// SECURE DATABASE MIGRATION ROUTE
+// Initialize DB tables function
+const initDB = async () => {
+  try {
+    await createUsersTable();
+    await createCartTable();
+    await createOrdersTables();
+    await createAddressTable();
+    await createWishlistTable();
+    await createCouponTable();
+    await createReviewTable();
+    await createNotificationTable();
+    await createSettingsTable();
+    await createShippingTable();
+    await createReturnTable();
+    await createBannerTable();
+    await createSerialTable();
+    console.log("All tables initialized successfully");
+    return true;
+  } catch (err) {
+    console.error("DB init error:", err.message);
+    return false;
+  }
+};
+
+// SECURE DATABASE MIGRATION & INITIALIZATION ROUTE
 app.get("/api/migrate-db", async (req, res) => {
   try {
     const secret = req.query.secret;
     if (secret !== (process.env.MIGRATION_SECRET || "anritvox-admin-migrate")) {
       return res.status(403).json({ error: "Forbidden. Please provide the correct ?secret query parameter." });
     }
-    console.log("Starting Database Migration...");
+    console.log("Starting Database Migration/Initialization...");
 
-    // Step 0: Ensure target tables exist
-    await createSerialTable();
+    // Step 0: Ensure all target tables exist (Run initDB)
+    await initDB();
 
     // Step 1: Add new columns to warranty_registrations
     await pool.query(`
@@ -102,6 +127,7 @@ app.get("/api/migrate-db", async (req, res) => {
         FROM serial_numbers
       `);
       migratedCount = migrationRes.affectedRows;
+      
       // Step 3: Map old registrations to the actual string serial
       await pool.query(`
         UPDATE warranty_registrations wr
@@ -113,7 +139,7 @@ app.get("/api/migrate-db", async (req, res) => {
 
     res.json({
       status: "success",
-      message: "Database migrated successfully! All old users are now active in the new system.",
+      message: "Database migrated and tables initialized successfully!",
       details: { migrated_serials: migratedCount, unified_system: "active" }
     });
   } catch (err) {
@@ -154,30 +180,15 @@ app.get("/", (req, res) => res.json({
   environment: process.env.NODE_ENV || "development"
 }));
 
-// Initialize DB tables
-const initDB = async () => {
-  try {
-    await createUsersTable();
-    await createCartTable();
-    await createOrdersTables();
-    await createAddressTable();
-    await createWishlistTable();
-    await createCouponTable();
-    await createReviewTable();
-    await createNotificationTable();
-    await createSettingsTable();
-    await createShippingTable();
-    await createReturnTable();
-    await createBannerTable();
-    await createSerialTable();
-    console.log("All tables initialized successfully");
-  } catch (err) {
-    console.error("DB init error:", err.message);
-  }
-};
+// Conditional Listener & Serverless Export
+if (process.env.NODE_ENV !== 'production') {
+  // Local development mode
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, async () => {
+    console.log(`Server running locally on port ${PORT}`);
+    await initDB(); // Only run DB init locally on boot
+  });
+}
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, async () => {
-  console.log(`Server running on port ${PORT}`);
-  await initDB();
-});
+// Export the app for Serverless Deployment (Vercel/AWS)
+module.exports = app;
