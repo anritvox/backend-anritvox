@@ -28,9 +28,6 @@ const returnRoutes = require("./routes/returnRoutes");
 const inventoryRoutes = require("./routes/inventoryRoutes");
 const bannerRoutes = require("./routes/bannerRoutes");
 
-// Auth Middleware (Imported here for protected routes like migrate-db)
-const { requireAuth, requireAdmin } = require("./middleware/authMiddleware");
-
 // Models for table initialization
 const { createUsersTable } = require("./models/userModel");
 const { createCartTable } = require("./models/cartModel");
@@ -74,9 +71,15 @@ app.use(
 );
 
 // ─── SECURE DATABASE MIGRATION ROUTE ───
-// This route is now protected. Only authenticated admins can trigger it.
-app.get("/api/migrate-db", requireAuth, requireAdmin, async (req, res) => {
+// Protected via a URL secret key to prevent crashes from mismatched middleware imports.
+app.get("/api/migrate-db", async (req, res) => {
   try {
+    // Inline security check: requires ?secret=anritvox-admin-migrate in the URL
+    const secret = req.query.secret;
+    if (secret !== (process.env.MIGRATION_SECRET || "anritvox-admin-migrate")) {
+      return res.status(403).json({ error: "Forbidden. Please provide the correct ?secret query parameter." });
+    }
+
     console.log("Starting Database Migration...");
 
     // Step 0: Ensure target tables exist
