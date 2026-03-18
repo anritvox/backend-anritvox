@@ -3,7 +3,6 @@ const express = require("express");
 const cors = require("cors");
 const pool = require("./config/db");
 const path = require("path");
-
 // Routes
 const categoryRoutes = require("./routes/categoryRoutes");
 const subcategoryRoutes = require("./routes/subcategoryRoutes");
@@ -27,7 +26,6 @@ const shippingRoutes = require("./routes/shippingRoutes");
 const returnRoutes = require("./routes/returnRoutes");
 const inventoryRoutes = require("./routes/inventoryRoutes");
 const bannerRoutes = require("./routes/bannerRoutes");
-
 // Models for table initialization
 const { createUsersTable } = require("./models/userModel");
 const { createCartTable } = require("./models/cartModel");
@@ -42,11 +40,9 @@ const { createShippingTable } = require("./models/shippingModel");
 const { createReturnTable } = require("./models/returnModel");
 const { createBannerTable } = require("./models/bannerModel");
 const { createSerialTable } = require("./models/serialModel");
-
 const app = express();
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
 // Enhanced CORS setup
 const allowedOrigins = [
   "http://localhost:3000",
@@ -56,7 +52,6 @@ const allowedOrigins = [
   "https://www.anritvox.com",
   "https://anritvox.com",
 ];
-
 app.use(
   cors({
     origin: function (origin, callback) {
@@ -69,7 +64,6 @@ app.use(
     credentials: true,
   })
 );
-
 // Initialize DB tables function
 const initDB = async () => {
   try {
@@ -93,7 +87,6 @@ const initDB = async () => {
     return false;
   }
 };
-
 // SECURE DATABASE MIGRATION & INITIALIZATION ROUTE
 app.get("/api/migrate-db", async (req, res) => {
   try {
@@ -102,10 +95,8 @@ app.get("/api/migrate-db", async (req, res) => {
       return res.status(403).json({ error: "Forbidden. Please provide the correct ?secret query parameter." });
     }
     console.log("Starting Database Migration/Initialization...");
-
     // Step 0: Ensure all target tables exist (Run initDB)
     await initDB();
-
     // Step 1: Add new columns to warranty_registrations
     await pool.query(`
       ALTER TABLE warranty_registrations
@@ -113,10 +104,8 @@ app.get("/api/migrate-db", async (req, res) => {
       ADD COLUMN IF NOT EXISTS invoice_number VARCHAR(100) DEFAULT NULL,
       ADD COLUMN IF NOT EXISTS registered_serial VARCHAR(50) DEFAULT NULL
     `);
-
     // Step 1.5: Ensure Banner table has description column
     await pool.query(`ALTER TABLE banners ADD COLUMN IF NOT EXISTS description TEXT DEFAULT NULL`);
-
     // Step 2: Move old data from serial_numbers to product_serials if it exists
     const [tables] = await pool.query("SHOW TABLES LIKE 'serial_numbers'");
     let migratedCount = 0;
@@ -136,7 +125,6 @@ app.get("/api/migrate-db", async (req, res) => {
         WHERE wr.registered_serial IS NULL
       `);
     }
-
     res.json({
       status: "success",
       message: "Database migrated and tables initialized successfully!",
@@ -147,7 +135,6 @@ app.get("/api/migrate-db", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 // Register all routes
 app.use("/api/categories", categoryRoutes);
 app.use("/api/subcategories", subcategoryRoutes);
@@ -171,7 +158,6 @@ app.use("/api/shipping", shippingRoutes);
 app.use("/api/returns", returnRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/banners", bannerRoutes);
-
 // Health check
 app.get("/", (req, res) => res.json({
   status: "ok",
@@ -179,16 +165,14 @@ app.get("/", (req, res) => res.json({
   version: "3.2.1",
   environment: process.env.NODE_ENV || "development"
 }));
-
-// Conditional Listener & Serverless Export
-if (process.env.NODE_ENV !== 'production') {
-  // Local development mode
-  const PORT = process.env.PORT || 5000;
-  app.listen(PORT, async () => {
-    console.log(`Server running locally on port ${PORT}`);
+// Start server - works for Railway (persistent server) and local development
+// Vercel (serverless) uses module.exports = app instead of app.listen()
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, async () => {
+  console.log(`Server running on port ${PORT}`);
+  if (process.env.NODE_ENV !== 'production') {
     await initDB(); // Only run DB init locally on boot
-  });
-}
-
+  }
+});
 // Export the app for Serverless Deployment (Vercel/AWS)
 module.exports = app;
