@@ -7,6 +7,7 @@ const createBannerTable = async () => {
       id INT AUTO_INCREMENT PRIMARY KEY,
       title VARCHAR(255) DEFAULT NULL,
       subtitle VARCHAR(255) DEFAULT NULL,
+      description TEXT DEFAULT NULL,
       image_url TEXT NOT NULL,
       link_url TEXT DEFAULT NULL,
       position ENUM('hero','promo','sidebar','popup') DEFAULT 'hero',
@@ -20,10 +21,10 @@ const createBannerTable = async () => {
 };
 
 const createBanner = async (data) => {
-  const { title, subtitle, image_url, link_url, position, sort_order, starts_at, ends_at } = data;
+  const { title, subtitle, description, image_url, link_url, position, sort_order, starts_at, ends_at } = data;
   const [result] = await pool.query(
-    'INSERT INTO banners (title, subtitle, image_url, link_url, position, sort_order, starts_at, ends_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-    [title || null, subtitle || null, image_url, link_url || null, position || 'hero', sort_order || 0, starts_at || null, ends_at || null]
+    'INSERT INTO banners (title, subtitle, description, image_url, link_url, position, sort_order, starts_at, ends_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [title || null, subtitle || null, description || null, image_url, link_url || null, position || 'hero', sort_order || 0, starts_at || null, ends_at || null]
   );
   return result.insertId;
 };
@@ -45,8 +46,17 @@ const getAllBanners = async () => {
 };
 
 const updateBanner = async (id, data) => {
-  const fields = Object.keys(data).map(k => `${k} = ?`).join(', ');
-  const values = [...Object.values(data), id];
+  // Only allow safe columns - prevents SQL errors when frontend sends id or created_at
+  const allowedFields = ['title', 'subtitle', 'description', 'image_url', 'link_url', 'position', 'sort_order', 'is_active', 'starts_at', 'ends_at'];
+  const updateData = {};
+  allowedFields.forEach(field => {
+    if (data[field] !== undefined) {
+      updateData[field] = data[field];
+    }
+  });
+  if (Object.keys(updateData).length === 0) return;
+  const fields = Object.keys(updateData).map(k => `${k} = ?`).join(', ');
+  const values = [...Object.values(updateData), id];
   await pool.query(`UPDATE banners SET ${fields} WHERE id = ?`, values);
 };
 
