@@ -56,7 +56,6 @@ const allowedOrigins = [
   "https://www.anritvox.com",
   "https://anritvox.com",
 ];
-
 app.use(
   cors({
     origin: function (origin, callback) {
@@ -70,16 +69,13 @@ app.use(
   })
 );
 
-// ─── SECURE DATABASE MIGRATION ROUTE ───
-// Protected via a URL secret key to prevent crashes from mismatched middleware imports.
+// SECURE DATABASE MIGRATION ROUTE
 app.get("/api/migrate-db", async (req, res) => {
   try {
-    // Inline security check: requires ?secret=anritvox-admin-migrate in the URL
     const secret = req.query.secret;
     if (secret !== (process.env.MIGRATION_SECRET || "anritvox-admin-migrate")) {
       return res.status(403).json({ error: "Forbidden. Please provide the correct ?secret query parameter." });
     }
-
     console.log("Starting Database Migration...");
 
     // Step 0: Ensure target tables exist
@@ -93,6 +89,9 @@ app.get("/api/migrate-db", async (req, res) => {
       ADD COLUMN IF NOT EXISTS registered_serial VARCHAR(50) DEFAULT NULL
     `);
 
+    // Step 1.5: Ensure Banner table has description column
+    await pool.query(`ALTER TABLE banners ADD COLUMN IF NOT EXISTS description TEXT DEFAULT NULL`);
+
     // Step 2: Move old data from serial_numbers to product_serials if it exists
     const [tables] = await pool.query("SHOW TABLES LIKE 'serial_numbers'");
     let migratedCount = 0;
@@ -103,7 +102,6 @@ app.get("/api/migrate-db", async (req, res) => {
         FROM serial_numbers
       `);
       migratedCount = migrationRes.affectedRows;
-
       // Step 3: Map old registrations to the actual string serial
       await pool.query(`
         UPDATE warranty_registrations wr
@@ -113,13 +111,10 @@ app.get("/api/migrate-db", async (req, res) => {
       `);
     }
 
-    res.json({ 
-      status: "success", 
+    res.json({
+      status: "success",
       message: "Database migrated successfully! All old users are now active in the new system.",
-      details: {
-        migrated_serials: migratedCount,
-        unified_system: "active"
-      }
+      details: { migrated_serials: migratedCount, unified_system: "active" }
     });
   } catch (err) {
     console.error("Migration Error:", err.message);
@@ -152,9 +147,9 @@ app.use("/api/inventory", inventoryRoutes);
 app.use("/api/banners", bannerRoutes);
 
 // Health check
-app.get("/", (req, res) => res.json({ 
-  status: "ok", 
-  message: "Anritvox API running", 
+app.get("/", (req, res) => res.json({
+  status: "ok",
+  message: "Anritvox API running",
   version: "3.2.1",
   environment: process.env.NODE_ENV || "development"
 }));
