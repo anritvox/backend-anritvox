@@ -1,4 +1,3 @@
-// backend/models/userModel.js
 const pool = require('../config/db');
 const bcrypt = require('bcrypt');
 
@@ -19,7 +18,7 @@ const createUsersTable = async () => {
     )
   `);
 };
-createUsersTable().catch(console.error);
+// We export this to be controlled by server.js initialization, removing standalone catch to prevent race conditions.
 
 const createUser = async ({ name, email, password, phone }) => {
   const hash = await bcrypt.hash(password, 10);
