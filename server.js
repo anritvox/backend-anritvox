@@ -175,12 +175,13 @@ app.get("/", (req, res) => res.json({
   environment: process.env.NODE_ENV || "development"
 }));
 // Start server - works for Railway (persistent server) and local development
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, async () => {
-  console.log(`Server running on port ${PORT}`);
-  if (process.env.NODE_ENV !== 'production') {
-    await initDB(); // Only run DB init locally on boot
-  }
-});
+if (process.env.NODE_ENV !== 'production') {
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, async () => {
+    console.log(`Server running locally on port ${PORT}`);
+    await initDB(); 
+  });
+}
+
 // Export the app for Serverless Deployment (Vercel/AWS)
 module.exports = app;
