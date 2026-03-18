@@ -175,7 +175,6 @@ app.get("/", (req, res) => res.json({
   environment: process.env.NODE_ENV || "development"
 }));
 // Start server - works for Railway (persistent server) and local development
-// Vercel (serverless) uses module.exports = app instead of app.listen()
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
