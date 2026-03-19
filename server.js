@@ -47,7 +47,6 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
-  "https://anritvox.vercel.app",
   "https://anritvox-frontend.vercel.app",
   "https://www.anritvox.com",
   "https://anritvox.com",
