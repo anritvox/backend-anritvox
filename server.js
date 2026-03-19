@@ -4,7 +4,7 @@ const cors = require("cors");
 const pool = require("./config/db");
 const path = require("path");
 
-// Routes
+// --- Route Imports ---
 const categoryRoutes = require("./routes/categoryRoutes");
 const subcategoryRoutes = require("./routes/subcategoryRoutes");
 const productRoutes = require("./routes/productRoutes");
@@ -28,7 +28,7 @@ const returnRoutes = require("./routes/returnRoutes");
 const inventoryRoutes = require("./routes/inventoryRoutes");
 const bannerRoutes = require("./routes/bannerRoutes");
 
-// Models for table initialization
+// --- Model Imports for Initialization ---
 const { createUsersTable } = require("./models/userModel");
 const { createCartTable } = require("./models/cartModel");
 const { createOrdersTables } = require("./models/orderModel");
@@ -44,10 +44,12 @@ const { createBannerTable } = require("./models/bannerModel");
 const { createSerialTable } = require("./models/serialModel");
 
 const app = express();
+
+// Middlewares
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Enhanced & Vercel-Optimized CORS setup
+// --- CORS Configuration ---
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
@@ -59,22 +61,17 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests with no origin (like mobile apps or curl requests)
       if (!origin) return callback(null, true);
-
-      // Dynamically allow any .vercel.app domain OR explicit domains from the list
       if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
         return callback(null, true);
       }
-
-      // If it doesn't match, block it
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
   })
 );
 
-// Initialize DB tables function
+// --- Database Utilities ---
 const initDB = async () => {
   try {
     await createUsersTable();
@@ -98,36 +95,28 @@ const initDB = async () => {
   }
 };
 
-// Helper: safely add a column if it doesn't exist (compatible with all MySQL versions)
 const safeAddColumn = async (table, column, definition) => {
   try {
     await pool.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
   } catch (err) {
-    if (err.code === 'ER_DUP_FIELDNAME') {
-      // Column already exists - that's fine
-    } else {
-      throw err;
-    }
+    if (err.code !== 'ER_DUP_FIELDNAME') throw err;
   }
 };
 
-// SECURE DATABASE MIGRATION & INITIALIZATION ROUTE
+// --- Migration Route ---
 app.get("/api/migrate-db", async (req, res) => {
   try {
     const secret = req.query.secret;
     if (secret !== (process.env.MIGRATION_SECRET || "anritvox-admin-migrate")) {
-      return res.status(403).json({ error: "Forbidden. Please provide the correct ?secret query parameter." });
+      return res.status(403).json({ error: "Forbidden." });
     }
-    console.log("Starting Database Migration/Initialization...");
-    // Step 0: Ensure all target tables exist (Run initDB)
+    
     await initDB();
-    // Step 1: Add new columns to warranty_registrations (one at a time for compatibility)
     await safeAddColumn("warranty_registrations", "purchase_date", "DATE DEFAULT NULL");
     await safeAddColumn("warranty_registrations", "invoice_number", "VARCHAR(100) DEFAULT NULL");
     await safeAddColumn("warranty_registrations", "registered_serial", "VARCHAR(50) DEFAULT NULL");
-    // Step 1.5: Ensure Banner table has description column
     await safeAddColumn("banners", "description", "TEXT DEFAULT NULL");
-    // Step 2: Move old data from serial_numbers to product_serials if it exists
+
     const [tables] = await pool.query("SHOW TABLES LIKE 'serial_numbers'");
     let migratedCount = 0;
     if (tables.length > 0) {
@@ -137,8 +126,6 @@ app.get("/api/migrate-db", async (req, res) => {
         FROM serial_numbers
       `);
       migratedCount = migrationRes.affectedRows;
-      
-      // Step 3: Map old registrations to the actual string serial
       await pool.query(`
         UPDATE warranty_registrations wr
         JOIN serial_numbers sn ON wr.serial_number_id = sn.id
@@ -146,18 +133,14 @@ app.get("/api/migrate-db", async (req, res) => {
         WHERE wr.registered_serial IS NULL
       `);
     }
-    res.json({
-      status: "success",
-      message: "Database migrated and tables initialized successfully!",
-      details: { migrated_serials: migratedCount, unified_system: "active" }
-    });
+
+    res.json({ status: "success", details: { migrated_serials: migratedCount } });
   } catch (err) {
-    console.error("Migration Error:", err.message);
     res.status(500).json({ error: err.message });
   }
 });
 
-// Register all routes
+// --- Register API Routes ---
 app.use("/api/categories", categoryRoutes);
 app.use("/api/subcategories", subcategoryRoutes);
 app.use("/api/products", productRoutes);
@@ -181,22 +164,22 @@ app.use("/api/returns", returnRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/banners", bannerRoutes);
 
-// Health check
+// --- Health Check ---
 app.get("/", (req, res) => res.json({
   status: "ok",
-  message: "Anritvox API running",
+  message: "Anritvox API running on Railway!",
   version: "3.2.1",
   environment: process.env.NODE_ENV || "development"
 }));
 
-// Start server - works for Railway (persistent server) and local development
-if (process.env.NODE_ENV !== 'production') {
-  const PORT = process.env.PORT || 5000;
-  app.listen(PORT, async () => {
-    console.log(`Server running locally on port ${PORT}`);
-    await initDB(); 
-  });
-}
+// --- Server Start (Optimized for Railway & Vercel) ---
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, async () => {
+  console.log(`Server running on port ${PORT}`);
+  // Run initialization on startup for persistent environments
+  if (process.env.NODE_ENV !== 'production') {
+    await initDB();
+  }
+});
 
-// Critical for Vercel:
 module.exports = app;
