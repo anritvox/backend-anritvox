@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const pool = require("./config/db");
 const path = require("path");
+
 // Routes
 const categoryRoutes = require("./routes/categoryRoutes");
 const subcategoryRoutes = require("./routes/subcategoryRoutes");
@@ -26,6 +27,7 @@ const shippingRoutes = require("./routes/shippingRoutes");
 const returnRoutes = require("./routes/returnRoutes");
 const inventoryRoutes = require("./routes/inventoryRoutes");
 const bannerRoutes = require("./routes/bannerRoutes");
+
 // Models for table initialization
 const { createUsersTable } = require("./models/userModel");
 const { createCartTable } = require("./models/cartModel");
@@ -40,10 +42,12 @@ const { createShippingTable } = require("./models/shippingModel");
 const { createReturnTable } = require("./models/returnModel");
 const { createBannerTable } = require("./models/bannerModel");
 const { createSerialTable } = require("./models/serialModel");
+
 const app = express();
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-// Enhanced CORS setup
+
+// Enhanced & Vercel-Optimized CORS setup
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:5173",
@@ -51,18 +55,25 @@ const allowedOrigins = [
   "https://www.anritvox.com",
   "https://anritvox.com",
 ];
+
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+
+      // Dynamically allow any .vercel.app domain OR explicit domains from the list
+      if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+        return callback(null, true);
       }
+
+      // If it doesn't match, block it
+      return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
   })
 );
+
 // Initialize DB tables function
 const initDB = async () => {
   try {
@@ -86,6 +97,7 @@ const initDB = async () => {
     return false;
   }
 };
+
 // Helper: safely add a column if it doesn't exist (compatible with all MySQL versions)
 const safeAddColumn = async (table, column, definition) => {
   try {
@@ -98,6 +110,7 @@ const safeAddColumn = async (table, column, definition) => {
     }
   }
 };
+
 // SECURE DATABASE MIGRATION & INITIALIZATION ROUTE
 app.get("/api/migrate-db", async (req, res) => {
   try {
@@ -143,6 +156,7 @@ app.get("/api/migrate-db", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 // Register all routes
 app.use("/api/categories", categoryRoutes);
 app.use("/api/subcategories", subcategoryRoutes);
@@ -166,6 +180,7 @@ app.use("/api/shipping", shippingRoutes);
 app.use("/api/returns", returnRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/banners", bannerRoutes);
+
 // Health check
 app.get("/", (req, res) => res.json({
   status: "ok",
@@ -173,8 +188,8 @@ app.get("/", (req, res) => res.json({
   version: "3.2.1",
   environment: process.env.NODE_ENV || "development"
 }));
+
 // Start server - works for Railway (persistent server) and local development
-// This change allows Vercel to handle the server correctly
 if (process.env.NODE_ENV !== 'production') {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, async () => {
