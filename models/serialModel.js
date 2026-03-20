@@ -89,6 +89,8 @@ const addSerials = async (productId, count, batchNumber, prefix) => {
   }
 };
 
+// ============= ADVANCED QUERYING WITH PAGINATION =============
+
 const getSerialsByProduct = async (productId, options = {}) => {
   const { page = 1, limit = 100, status, sortBy = 'created_at', sortOrder = 'DESC' } = options;
   const offset = (page - 1) * limit;
@@ -102,8 +104,11 @@ const getSerialsByProduct = async (productId, options = {}) => {
   params.push(limit, offset);
 
   const [rows] = await pool.query(query, params);
+  
+  // 🌟 CRITICAL FIX: Map database 'serial_number' to frontend 'serial'
   const labeledSerials = rows.map(row => ({
       ...row,
+      serial: row.serial_number, 
       is_new_format: isNewFormatSerial(row.serial_number),
       serial_type: isNewFormatSerial(row.serial_number) ? 'NEW' : 'OLD'
   }));
@@ -113,8 +118,12 @@ const getSerialsByProduct = async (productId, options = {}) => {
   if (status) { countQuery += ' AND status = ?'; countParams.push(status); }
   const [[{ total }]] = await pool.query(countQuery, countParams);
 
+  // 🌟 CRITICAL FIX: Fetch statistics to send to the frontend React counters
+  const stats = await getSerialStatistics(productId);
+
   return {
     serials: labeledSerials,
+    statistics: stats, // <-- The frontend needs this to show the numbers!
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
   };
 };
@@ -137,8 +146,11 @@ const getAllSerials = async (options = {}) => {
   params.push(limit, offset);
 
   const [rows] = await pool.query(query, params);
+  
+  // 🌟 CRITICAL FIX: Map database 'serial_number' to frontend 'serial'
   const labeledSerials = rows.map(row => ({
       ...row,
+      serial: row.serial_number,
       is_new_format: isNewFormatSerial(row.serial_number),
       serial_type: isNewFormatSerial(row.serial_number) ? 'NEW' : 'OLD'
   }));
