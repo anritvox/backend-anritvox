@@ -159,6 +159,15 @@ const getSerialsByProduct = async (productId, options = {}) => {
 
   const [rows] = await pool.query(query, params);
 
+  // 🌟 FIX APPLIED HERE: We label each row as "Old Format" or "New Format"
+  const labeledSerials = rows.map(row => {
+      return {
+          ...row,
+          is_new_format: isNewFormatSerial(row.serial_number),
+          serial_type: isNewFormatSerial(row.serial_number) ? 'NEW' : 'OLD'
+      };
+  });
+
   // Get total count
   let countQuery = 'SELECT COUNT(*) as total FROM product_serials WHERE product_id = ?';
   const countParams = [productId];
@@ -169,7 +178,7 @@ const getSerialsByProduct = async (productId, options = {}) => {
   const [[{ total }]] = await pool.query(countQuery, countParams);
 
   return {
-    serials: rows,
+    serials: labeledSerials, // Sending the labeled serials!
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
   };
 };
@@ -220,6 +229,15 @@ const getAllSerials = async (options = {}) => {
 
   const [rows] = await pool.query(query, params);
 
+  // 🌟 FIX APPLIED HERE: We label each row as "Old Format" or "New Format" for the Admin Panel!
+  const labeledSerials = rows.map(row => {
+      return {
+          ...row, // Keep all the original database info
+          is_new_format: isNewFormatSerial(row.serial_number), // true or false
+          serial_type: isNewFormatSerial(row.serial_number) ? 'NEW' : 'OLD' // Word label
+      };
+  });
+
   // Get total count
   let countQuery = 'SELECT COUNT(*) as total FROM product_serials ps LEFT JOIN products p ON ps.product_id = p.id WHERE 1=1';
   const countParams = [];
@@ -243,7 +261,7 @@ const getAllSerials = async (options = {}) => {
   const [[{ total }]] = await pool.query(countQuery, countParams);
 
   return {
-    serials: rows,
+    serials: labeledSerials, // Sending the labeled serials!
     pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
   };
 };
