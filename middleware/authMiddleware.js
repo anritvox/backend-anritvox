@@ -1,7 +1,8 @@
 const jwt = require('jsonwebtoken');
-const pool = require('../config/db'); // Imported for real-time validation
+// 1. Import your Mongoose models instead of SQL 'pool'
+const Admin = require('../models/adminModel');
+const User = require('../models/userModel');
 
-// Admin auth middleware - verifies JWT AND checks real-time database status
 const authenticateAdmin = async (req, res, next) => {
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Bearer ')) {
@@ -12,26 +13,26 @@ const authenticateAdmin = async (req, res, next) => {
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
     
-    // Ensure this is an admin token, not a customer token
     if (payload.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied: admin only' });
     }
 
-    // SECURITY FIX: Prevent "Zombie" Tokens
-    // Ensure the admin account hasn't been deleted or disabled since the JWT was issued
-    const [adminData] = await pool.query('SELECT id FROM admin_users WHERE id = ?', [payload.id]);
-    if (!adminData || adminData.length === 0) {
+    // SECURITY FIX: Using Mongoose correctly
+    // Fallback to _id just in case your token signs using the default Mongo ID
+    const adminData = await Admin.findById(payload.id || payload._id);
+    if (!adminData) {
       return res.status(401).json({ message: 'Admin account no longer exists.' });
     }
 
     req.admin = payload;
     next();
   } catch (err) {
+    // ADDED LOGGING: If this fails again, check Railway Logs to see EXACTLY why
+    console.error("Admin Auth Error:", err); 
     return res.status(401).json({ message: 'Invalid or expired token' });
   }
 };
 
-// User auth middleware - verifies JWT and checks if customer is banned
 const authenticateUser = async (req, res, next) => {
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Bearer ')) {
@@ -42,23 +43,21 @@ const authenticateUser = async (req, res, next) => {
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
     
-    // SECURITY FIX: Prevent "Zombie" Tokens
-    // Ensure the user hasn't been banned (is_active = 0) or deleted
-    const [userData] = await pool.query('SELECT is_active FROM users WHERE id = ?', [payload.id]);
-    if (!userData || userData.length === 0 || userData[0].is_active === 0) {
+    // SECURITY FIX: Using Mongoose correctly
+    const userData = await User.findById(payload.id || payload._id);
+    // Adjusted check for your typical Mongoose boolean structure
+    if (!userData || userData.is_active === 0 || userData.is_active === false) {
       return res.status(401).json({ message: 'Account is disabled or deleted. Please contact support.' });
     }
 
     req.user = payload;
     next();
   } catch (err) {
+    console.error("User Auth Error:", err);
     return res.status(401).json({ message: 'Invalid or expired token' });
   }
 };
 
-// Default export (backward compat for existing routes)
 module.exports = authenticateAdmin;
-
-// Named exports
 module.exports.authenticateAdmin = authenticateAdmin;
 module.exports.authenticateUser = authenticateUser;
