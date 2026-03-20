@@ -32,10 +32,10 @@ const removeFromWishlist = async (userId, productId) => {
 const getWishlistByUser = async (userId) => {
   const [rows] = await pool.query(
     `SELECT w.id, w.created_at,
-      p.id as product_id, p.name, p.price, p.discount_price, p.quantity, p.status
-     FROM wishlist w
-     JOIN products p ON w.product_id = p.id
-     WHERE w.user_id = ?`,
+      p.id as product_id, p.name, p.price, p.discount_price, p.quantity, p.status, p.images
+      FROM wishlist w
+      JOIN products p ON w.product_id = p.id
+      WHERE w.user_id = ?`,
     [userId]
   );
   return rows;
