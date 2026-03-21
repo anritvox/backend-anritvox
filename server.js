@@ -4,6 +4,9 @@ const cors = require("cors");
 const pool = require("./config/db");
 const path = require("path");
 
+// --- FIX: Import the function to create the serials table ---
+const { createSerialTable } = require('./models/serialModel');
+
 // Route Imports
 const categoryRoutes = require("./routes/categoryRoutes");
 const subcategoryRoutes = require("./routes/subcategoryRoutes");
@@ -27,9 +30,6 @@ const shippingRoutes = require("./routes/shippingRoutes");
 const returnRoutes = require("./routes/returnRoutes");
 const inventoryRoutes = require("./routes/inventoryRoutes");
 const bannerRoutes = require("./routes/bannerRoutes");
-
-// Database Initialization Import
-const { createSerialTable } = require('./models/serialModel');
 
 const app = express();
 app.use(express.json());
@@ -80,20 +80,12 @@ app.use("/api/banners", bannerRoutes);
 
 app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running on Railway!" }));
 
-// --- Database Initialization ---
-// This ensures tables exist before the server starts accepting traffic
+// --- FIX: Execute the table creation before starting the server ---
 createSerialTable()
-  .then(() => {
-    console.log("✅ product_serials table is ready");
-    
-    // Start the server only after DB init (optional but recommended)
-    const PORT = process.env.PORT || 5000;
-    app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
-  })
-  .catch((err) => {
-    console.error("❌ Failed to create product_serials table:", err);
-    // You might want to exit the process if the DB is critical
-    // process.exit(1); 
-  });
+  .then(() => console.log("product_serials table is verified/ready"))
+  .catch((err) => console.error("Failed to create product_serials table:", err));
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 module.exports = app;
