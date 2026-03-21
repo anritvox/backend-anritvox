@@ -4,9 +4,10 @@ const cors = require("cors");
 const pool = require("./config/db");
 const path = require("path");
 
+// --- FIX: Import the function to create the serials table ---
 const { createSerialTable } = require('./models/serialModel');
 
-// Route Imports,
+// Route Imports
 const categoryRoutes = require("./routes/categoryRoutes");
 const subcategoryRoutes = require("./routes/subcategoryRoutes");
 const productRoutes = require("./routes/productRoutes");
