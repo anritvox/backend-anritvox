@@ -2,13 +2,9 @@ const pool = require('../config/db');
 require('dotenv').config();
 const CLOUDFRONT_BASE_URL = process.env.CLOUDFRONT_BASE_URL;
 
-// Helper: add column if it doesn't exist (MySQL 5.7 compatible)
 const addColIfMissing = async (table, column, definition) => {
   const [cols] = await pool.query(
-    `SELECT COLUMN_NAME FROM information_schema.COLUMNS
-     WHERE TABLE_SCHEMA = DATABASE()
-     AND TABLE_NAME = ?
-     AND COLUMN_NAME = ?`,
+    'SELECT COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?',
     [table, column]
   );
   if (cols.length === 0) {
@@ -16,7 +12,6 @@ const addColIfMissing = async (table, column, definition) => {
   }
 };
 
-// Auto-create/alter products table with all e-commerce fields
 const initProductsTable = async () => {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS products (
@@ -40,7 +35,6 @@ const initProductsTable = async () => {
     )
   `);
   
-  // Add new columns to existing table if missing
   await addColIfMissing('products', 'warranty_period', 'VARCHAR(100) DEFAULT NULL AFTER brand');
   await addColIfMissing('products', 'slug', 'VARCHAR(255) AFTER name');
   await addColIfMissing('products', 'sku', 'VARCHAR(100) AFTER slug');
@@ -51,14 +45,11 @@ const initProductsTable = async () => {
   await addColIfMissing('products', 'meta_description', 'TEXT AFTER meta_title');
   await addColIfMissing('products', 'tags', 'VARCHAR(500) AFTER meta_description');
 
-  // Performance Indexes for fast e-commerce searching and routing
-  try { await pool.query(`ALTER TABLE products ADD UNIQUE INDEX idx_slug (slug)`); } catch(e) {}
-  try { await pool.query(`ALTER TABLE products ADD INDEX idx_status (status)`); } catch(e) {}
-  try { await pool.query(`ALTER TABLE products ADD INDEX idx_category (category_id)`); } catch(e) {}
+  try { await pool.query('ALTER TABLE products ADD UNIQUE INDEX idx_slug (slug)'); } catch(e) {}
+  try { await pool.query('ALTER TABLE products ADD INDEX idx_status (status)'); } catch(e) {}
+  try { await pool.query('ALTER TABLE products ADD INDEX idx_category (category_id)'); } catch(e) {}
 };
-// Removed standalone catch to let server.js manage DB init sequences.
 
-// ─── HELPERS ─────────────────────────────────────────────────────────
 const attachImages = async (rows) => {
   for (const product of rows) {
     const [imgs] = await pool.query(
@@ -70,8 +61,6 @@ const attachImages = async (rows) => {
   return rows;
 };
 
-// ─── QUERIES ─────────────────────────────────────────────────────────
-// List all products (admin - includes inactive)
 const getAllProducts = async () => {
   const [rows] = await pool.query(`
     SELECT p.id, p.name, p.slug, p.sku, p.brand, p.description,
@@ -81,14 +70,13 @@ const getAllProducts = async () => {
       sc.id AS subcategory_id, sc.name AS subcategory_name,
       p.created_at, p.updated_at
     FROM products p
-    JOIN categories c ON p.category_id = c.id
+    LEFT JOIN categories c ON p.category_id = c.id
     LEFT JOIN subcategories sc ON p.subcategory_id = sc.id
     ORDER BY p.created_at DESC
   `);
   return attachImages(rows);
 };
 
-// List active products only (customer-facing) with optional filters
 const getActiveProducts = async ({ category_id, subcategory_id, min_price, max_price, search, sort } = {}) => {
   let sql = `
     SELECT p.id, p.name, p.slug, p.sku, p.brand, p.description,
@@ -97,7 +85,7 @@ const getActiveProducts = async ({ category_id, subcategory_id, min_price, max_p
       sc.id AS subcategory_id, sc.name AS subcategory_name,
       p.created_at
     FROM products p
-    JOIN categories c ON p.category_id = c.id
+    LEFT JOIN categories c ON p.category_id = c.id
     LEFT JOIN subcategories sc ON p.subcategory_id = sc.id
     WHERE p.status = 'active'
   `;
@@ -122,7 +110,6 @@ const getActiveProducts = async ({ category_id, subcategory_id, min_price, max_p
   return attachImages(rows);
 };
 
-// Get one product by ID (with images)
 const getProductById = async (id) => {
   const [[product]] = await pool.query(
     `SELECT p.id, p.name, p.slug, p.sku, p.brand, p.description,
@@ -141,7 +128,6 @@ const getProductById = async (id) => {
   return product;
 };
 
-// Get product by slug (customer-facing)
 const getProductBySlug = async (slug) => {
   const [[product]] = await pool.query(
     `SELECT p.id, p.name, p.slug, p.sku, p.brand, p.description,
@@ -151,7 +137,7 @@ const getProductBySlug = async (slug) => {
       sc.id AS subcategory_id, sc.name AS subcategory_name,
       p.created_at
      FROM products p
-     JOIN categories c ON p.category_id = c.id
+     LEFT JOIN categories c ON p.category_id = c.id
      LEFT JOIN subcategories sc ON p.subcategory_id = sc.id
      WHERE p.slug = ? AND p.status = 'active'`,
     [slug]
@@ -165,7 +151,6 @@ const getProductBySlug = async (slug) => {
   return product;
 };
 
-// Create product
 const createProduct = async (data) => {
   const {
     name, slug, sku, brand, description,
@@ -186,7 +171,6 @@ const createProduct = async (data) => {
   return result.insertId;
 };
 
-// Update product (non-destructive)
 const updateProduct = async (id, data) => {
   const {
     name, slug, sku, brand, description,
@@ -208,12 +192,10 @@ const updateProduct = async (id, data) => {
   );
 };
 
-// Toggle product status (publish/unpublish)
 const updateProductStatus = async (id, status) => {
   await pool.query('UPDATE products SET status=? WHERE id=?', [status, id]);
 };
 
-// Add image record
 const addProductImage = async (productId, filePath) => {
   await pool.query(
     'INSERT INTO product_images (product_id, file_path) VALUES (?, ?)',
@@ -221,7 +203,6 @@ const addProductImage = async (productId, filePath) => {
   );
 };
 
-// Delete image record
 const deleteProductImage = async (productId, filePath) => {
   await pool.query(
     'DELETE FROM product_images WHERE product_id=? AND file_path=?',
@@ -229,7 +210,6 @@ const deleteProductImage = async (productId, filePath) => {
   );
 };
 
-// Add serial number
 const addSerialNumber = async (productId, serial) => {
   await pool.query(
     'INSERT INTO serial_numbers (product_id, serial, is_used) VALUES (?, ?, 0)',
@@ -237,7 +217,6 @@ const addSerialNumber = async (productId, serial) => {
   );
 };
 
-// Delete product with warranty protection
 const deleteProduct = async (id) => {
   const [product] = await pool.query('SELECT id, name FROM products WHERE id = ?', [id]);
   if (product.length === 0) throw { status: 404, message: 'Product not found' };
