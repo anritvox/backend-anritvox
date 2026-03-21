@@ -78,7 +78,7 @@ app.use("/api/banners", bannerRoutes);
 
 app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running on Railway!" }));
 
-// --- FIX: Execute the table creation before starting the server---
+// --- FIX: Execute the table creation before starting the server--
 createSerialTable()
   .then(() => console.log("product_serials table is verified/ready"))
   .catch((err) => console.error("Failed to create product_serials table:", err));
