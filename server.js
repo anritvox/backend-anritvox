@@ -6,7 +6,7 @@ const path = require("path");
 
 const { createSerialTable } = require('./models/serialModel');
 
-// Route Imports
+// Route Imports,
 const categoryRoutes = require("./routes/categoryRoutes");
 const subcategoryRoutes = require("./routes/subcategoryRoutes");
 const productRoutes = require("./routes/productRoutes");
