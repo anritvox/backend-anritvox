@@ -1,4 +1,3 @@
-// backend/models/couponModel.js
 const pool = require('../config/db');
 
 const createCouponTable = async () => {
@@ -39,7 +38,9 @@ const getAllCoupons = async () => {
 };
 
 const updateCoupon = async (id, data) => {
-  const fields = Object.keys(data).map(k => `${k} = ?`).join(', ');
+  const keys = Object.keys(data);
+  if (keys.length === 0) return;
+  const fields = keys.map(k => `${k} = ?`).join(', ');
   const values = [...Object.values(data), id];
   await pool.query(`UPDATE coupons SET ${fields} WHERE id = ?`, values);
 };
