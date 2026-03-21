@@ -28,6 +28,9 @@ const returnRoutes = require("./routes/returnRoutes");
 const inventoryRoutes = require("./routes/inventoryRoutes");
 const bannerRoutes = require("./routes/bannerRoutes");
 
+// Database Initialization Import
+const { createSerialTable } = require('./models/serialModel');
+
 const app = express();
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
@@ -77,7 +80,20 @@ app.use("/api/banners", bannerRoutes);
 
 app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running on Railway!" }));
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// --- Database Initialization ---
+// This ensures tables exist before the server starts accepting traffic
+createSerialTable()
+  .then(() => {
+    console.log("✅ product_serials table is ready");
+    
+    // Start the server only after DB init (optional but recommended)
+    const PORT = process.env.PORT || 5000;
+    app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+  })
+  .catch((err) => {
+    console.error("❌ Failed to create product_serials table:", err);
+    // You might want to exit the process if the DB is critical
+    // process.exit(1); 
+  });
 
 module.exports = app;
