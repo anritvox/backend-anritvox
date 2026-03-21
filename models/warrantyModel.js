@@ -5,10 +5,9 @@ const CLOUDFRONT_BASE_URL = process.env.CLOUDFRONT_BASE_URL;
 const validateSerial = async (serial) => {
   const s = serial.trim().toUpperCase();
   
-  // 1. Fetch the product details (Removed p.images and p.warranty_period from here)
   const [rows] = await pool.query(
     `SELECT ps.id AS serial_id, ps.product_id, ps.serial_number, ps.status, 
-            p.name AS product_name, p.brand,
+            p.name AS product_name, p.brand, p.warranty_period,
             c.id AS category_id, c.name AS category_name
      FROM product_serials ps
      JOIN products p ON ps.product_id = p.id
@@ -21,13 +20,11 @@ const validateSerial = async (serial) => {
   
   const rec = rows[0];
 
-  // 2. Fetch the images from the product_images table
   const [imageRows] = await pool.query(
     'SELECT file_path FROM product_images WHERE product_id = ?',
     [rec.product_id]
   );
 
-  // 3. Attach the images to the record, formatting them into full URLs
   rec.images = imageRows.map((img) => `${CLOUDFRONT_BASE_URL}/${img.file_path}`);
     
   return rec;
@@ -36,7 +33,7 @@ const validateSerial = async (serial) => {
 const registerWarranty = async ({ serialNumber, productId, customerName, email, phone, purchaseDate, invoiceNumber }) => {
   const rec = await validateSerial(serialNumber);
   if (rec.product_id !== Number(productId)) throw { status: 400, message: "Product mismatch for given serial number." };
-  // Now check if it's available for registration (not already registered or sold)
+
   if (rec.status === 'registered' || rec.status === 'sold') {
     throw { status: 400, message: "This serial number is already registered for warranty." };
   }
@@ -71,12 +68,10 @@ const getAllRegistrations = async () => {
   return rows;
 };
 
-// ADDED: Update status logic
 const updateWarrantyStatus = async (id, status) => {
   await pool.query('UPDATE warranty_registrations SET status = ? WHERE id = ?', [status, id]);
 };
 
-// ADDED: Delete logic (also resets the serial back to 'available')
 const deleteWarranty = async (id) => {
   const conn = await pool.getConnection();
   try {
