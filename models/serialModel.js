@@ -60,10 +60,12 @@ const addSerials = async (productId, count, batchNumber, prefix) => {
   const serials = [];
   const totalCount = parseInt(count, 10);
   const serialSet = new Set();
+  
   while (serialSet.size < totalCount) {
     const sn = generateEnhancedSerial(prefix);
     serialSet.add(sn);
   }
+  
   serialSet.forEach(sn => {
     serials.push([productId, sn, 'available', batchNumber, null]);
   });
@@ -219,7 +221,16 @@ const getSerialStatistics = async (productId = null) => {
 };
 
 module.exports = {
-  createSerialTable, addSerials, checkSerial, getSerialsByProduct, getAllSerials,
-  updateSerialStatus, deleteSerial, deleteBatch, getSerialStatistics,
-  generateEnhancedSerial, validateSerialChecksum, isNewFormatSerial
+  createSerialTable, 
+  addSerials, 
+  checkSerial, 
+  getSerialsByProduct, 
+  getAllSerials,
+  updateSerialStatus, 
+  deleteSerial, 
+  deleteBatch, 
+  getSerialStatistics,
+  generateEnhancedSerial, 
+  validateSerialChecksum, 
+  isNewFormatSerial
 };
