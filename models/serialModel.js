@@ -1,236 +1,223 @@
-const pool = require('../config/db');
-const crypto = require('crypto');
+// backend/models/serialModel.js
+const pool = require("../config/db");
 
-const generateEnhancedSerial = (prefix = 'ANRI') => {
-  const cleanPrefix = prefix.toString().substring(0, 4).toUpperCase().padEnd(4, 'X');
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; 
-  const date = new Date();
-  const yearMonth = (date.getFullYear() % 100).toString().padStart(2, '0') +
-                    (date.getMonth() + 1).toString().padStart(2, '0');
-  let unique = '';
-  for (let i = 0; i < 6; i++) {
-    unique += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  const baseSerial = `${cleanPrefix}-${yearMonth}-${unique}`;
-  const checksum = generateChecksum(baseSerial);
-  return `${baseSerial}-${checksum}`;
-};
-
-const generateChecksum = (serial) => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  const hash = crypto.createHash('md5').update(serial).digest('hex');
-  return (chars.charAt(parseInt(hash[0], 16) % chars.length) +
-          chars.charAt(parseInt(hash[1], 16) % chars.length));
-};
-
-const validateSerialChecksum = (serial) => {
-  if (!serial || typeof serial !== 'string') return false;
-  const parts = serial.split('-');
-  if (parts.length !== 4) return false;
-  const baseSerial = parts.slice(0, 3).join('-');
-  const providedChecksum = parts[3];
-  const calculatedChecksum = generateChecksum(baseSerial);
-  return providedChecksum === calculatedChecksum;
-};
-
-const isNewFormatSerial = (serial) => {
-  if (!serial || typeof serial !== 'string') return false;
-  const parts = serial.split('-');
-  return parts.length === 4;
-};
-
-const createSerialTable = async () => {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS product_serials (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      product_id INT NOT NULL,
-      serial_number VARCHAR(50) UNIQUE NOT NULL,
-      status ENUM('available', 'sold', 'registered', 'blocked') DEFAULT 'available',
-      batch_number VARCHAR(50),
-      notes TEXT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
-      INDEX idx_product_id (product_id)
-    )
-  `);
-};
-
-const addSerials = async (productId, count, batchNumber, prefix) => {
-  const serials = [];
-  const totalCount = parseInt(count, 10);
-  const serialSet = new Set();
-  
-  while (serialSet.size < totalCount) {
-    const sn = generateEnhancedSerial(prefix);
-    serialSet.add(sn);
-  }
-  
-  serialSet.forEach(sn => {
-    serials.push([productId, sn, 'available', batchNumber, null]);
-  });
-
-  const conn = await pool.getConnection();
-  try {
-    await conn.beginTransaction();
-    const chunkSize = 1000;
-    for (let i = 0; i < serials.length; i += chunkSize) {
-      const chunk = serials.slice(i, i + chunkSize);
-      await conn.query(
-        'INSERT INTO product_serials (product_id, serial_number, status, batch_number, notes) VALUES ?',
-        [chunk]
-      );
-    }
-    await conn.commit();
-    return Array.from(serialSet);
-  } catch (err) {
-    await conn.rollback();
-    throw new Error(`Failed to generate serials: ${err.message}`);
-  } finally {
-    conn.release();
-  }
-};
-
-// ============= ADVANCED QUERYING WITH PAGINATION =============
-
-const getSerialsByProduct = async (productId, options = {}) => {
-  const { page = 1, limit = 100, status, sortBy = 'created_at', sortOrder = 'DESC' } = options;
-  const offset = (page - 1) * limit;
-  let query = 'SELECT * FROM product_serials WHERE product_id = ?';
-  const params = [productId];
-  if (status) { query += ' AND status = ?'; params.push(status); }
-  
-  const safeSort = ['created_at', 'serial_number', 'status', 'batch_number'].includes(sortBy) ? sortBy : 'created_at';
-  const safeOrder = ['ASC', 'DESC'].includes(sortOrder.toUpperCase()) ? sortOrder.toUpperCase() : 'DESC';
-  query += ` ORDER BY ${safeSort} ${safeOrder} LIMIT ? OFFSET ?`;
-  params.push(limit, offset);
-
-  const [rows] = await pool.query(query, params);
-  
-  // 🌟 CRITICAL FIX: Map database 'serial_number' to frontend 'serial'
-  const labeledSerials = rows.map(row => ({
-      ...row,
-      serial: row.serial_number, 
-      is_new_format: isNewFormatSerial(row.serial_number),
-      serial_type: isNewFormatSerial(row.serial_number) ? 'NEW' : 'OLD'
-  }));
-
-  let countQuery = 'SELECT COUNT(*) as total FROM product_serials WHERE product_id = ?';
-  const countParams = [productId];
-  if (status) { countQuery += ' AND status = ?'; countParams.push(status); }
-  const [[{ total }]] = await pool.query(countQuery, countParams);
-
-  // 🌟 CRITICAL FIX: Fetch statistics to send to the frontend React counters
-  const stats = await getSerialStatistics(productId);
-
-  return {
-    serials: labeledSerials,
-    statistics: stats, // <-- The frontend needs this to show the numbers!
-    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
-  };
-};
-
-const getAllSerials = async (options = {}) => {
-  const { page = 1, limit = 100, status, productId, batchNumber, searchTerm, sortBy = 'created_at', sortOrder = 'DESC' } = options;
-  const offset = (page - 1) * limit;
-  let query = 'SELECT ps.*, p.name as product_name FROM product_serials ps LEFT JOIN products p ON ps.product_id = p.id WHERE 1=1';
-  const params = [];
-  if (status) { query += ' AND ps.status = ?'; params.push(status); }
-  if (productId) { query += ' AND ps.product_id = ?'; params.push(productId); }
-  if (batchNumber) { query += ' AND ps.batch_number = ?'; params.push(batchNumber); }
-  if (searchTerm) {
-    query += ' AND (ps.serial_number LIKE ? OR p.name LIKE ?)';
-    params.push(`%${searchTerm}%`, `%${searchTerm}%`);
-  }
-  const safeSort = ['created_at', 'serial_number', 'status', 'batch_number', 'product_name'].includes(sortBy) ? sortBy : 'created_at';
-  const safeOrder = ['ASC', 'DESC'].includes(sortOrder.toUpperCase()) ? sortOrder.toUpperCase() : 'DESC';
-  query += ` ORDER BY ${safeSort} ${safeOrder} LIMIT ? OFFSET ?`;
-  params.push(limit, offset);
-
-  const [rows] = await pool.query(query, params);
-  
-  // 🌟 CRITICAL FIX: Map database 'serial_number' to frontend 'serial'
-  const labeledSerials = rows.map(row => ({
-      ...row,
-      serial: row.serial_number,
-      is_new_format: isNewFormatSerial(row.serial_number),
-      serial_type: isNewFormatSerial(row.serial_number) ? 'NEW' : 'OLD'
-  }));
-
-  let countQuery = 'SELECT COUNT(*) as total FROM product_serials ps LEFT JOIN products p ON ps.product_id = p.id WHERE 1=1';
-  const countParams = [];
-  if (status) { countQuery += ' AND ps.status = ?'; countParams.push(status); }
-  if (productId) { countQuery += ' AND ps.product_id = ?'; countParams.push(productId); }
-  if (batchNumber) { countQuery += ' AND ps.batch_number = ?'; countParams.push(batchNumber); }
-  if (searchTerm) {
-    countQuery += ' AND (ps.serial_number LIKE ? OR p.name LIKE ?)';
-    countParams.push(`%${searchTerm}%`, `%${searchTerm}%`);
-  }
-  const [[{ total }]] = await pool.query(countQuery, countParams);
-
-  return {
-    serials: labeledSerials,
-    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) }
-  };
-};
-
-const checkSerial = async (serialNumber) => {
-  const s = serialNumber.trim().toUpperCase();
-  if (isNewFormatSerial(s)) {
-    if (!validateSerialChecksum(s)) throw new Error('Invalid serial number format or checksum');
-  }
+// Get all serials for a specific product
+const getProductSerials = async (productId) => {
   const [rows] = await pool.query(
-    `SELECT ps.*, p.name as product_name, p.images, p.brand, p.warranty_period
-     FROM product_serials ps JOIN products p ON ps.product_id = p.id WHERE ps.serial_number = ?`,
-    [s]
+    `SELECT 
+       sn.id,
+       sn.serial,
+       sn.is_used,
+       sn.created_at,
+       CASE 
+         WHEN wr.id IS NOT NULL THEN 'registered'
+         ELSE 'available'
+       END as status,
+       wr.user_name,
+       wr.registered_at
+     FROM serial_numbers sn
+     LEFT JOIN warranty_registrations wr ON sn.id = wr.serial_number_id
+     WHERE sn.product_id = ?
+     ORDER BY sn.created_at DESC`,
+    [productId]
   );
-  return rows[0];
+  return rows;
 };
 
-const updateSerialStatus = async (id, status, notes = null) => {
-  const updateFields = ['status = ?'];
-  const params = [status];
-  if (notes !== null) { updateFields.push('notes = ?'); params.push(notes); }
-  params.push(id);
-  await pool.query(`UPDATE product_serials SET ${updateFields.join(', ')} WHERE id = ?`, params);
+// Add new serials to existing product
+const addProductSerials = async (productId, serials) => {
+  // Validate product exists
+  const [product] = await pool.query(
+    "SELECT id, name FROM products WHERE id = ?",
+    [productId]
+  );
+  if (product.length === 0) {
+    throw { status: 404, message: "Product not found" };
+  }
+
+  // Clean and validate serials
+  const cleanedSerials = serials.map((s) => s.trim().toUpperCase());
+  const invalidSerials = cleanedSerials.filter((s) => !/^[A-Z0-9]+$/.test(s));
+
+  if (invalidSerials.length > 0) {
+    throw {
+      status: 400,
+      message: `Invalid serial format: ${invalidSerials.join(", ")}`,
+    };
+  }
+
+  // Check for duplicates within the batch
+  const duplicatesInBatch = cleanedSerials.filter(
+    (s, i) => cleanedSerials.indexOf(s) !== i
+  );
+  if (duplicatesInBatch.length > 0) {
+    const uniqueDuplicates = [...new Set(duplicatesInBatch)];
+    throw {
+      status: 400,
+      message: `Duplicate serials in batch: ${uniqueDuplicates.join(", ")}`,
+      duplicates: uniqueDuplicates,
+    };
+  }
+
+  // Check for existing serials in database
+  const [existing] = await pool.query(
+    "SELECT serial FROM serial_numbers WHERE serial IN (?)",
+    [cleanedSerials]
+  );
+
+  if (existing.length > 0) {
+    const existingSerials = existing.map((row) => row.serial);
+    throw {
+      status: 409,
+      message: `Serial(s) already exist: ${existingSerials.join(", ")}`,
+      duplicates: existingSerials,
+    };
+  }
+
+  // Insert new serials
+  const values = cleanedSerials.map((serial) => [productId, serial, 0]);
+  const [result] = await pool.query(
+    "INSERT INTO serial_numbers (product_id, serial, is_used) VALUES ?",
+    [values]
+  );
+
+  // Update product quantity
+  await pool.query(
+    `UPDATE products 
+     SET quantity = (SELECT COUNT(*) FROM serial_numbers WHERE product_id = ?) 
+     WHERE id = ?`,
+    [productId, productId]
+  );
+
+  return {
+    added: cleanedSerials.length,
+    serials: cleanedSerials,
+    insertId: result.insertId,
+  };
 };
 
-const deleteSerial = async (id) => {
-  await pool.query('DELETE FROM product_serials WHERE id = ?', [id]);
+// Delete specific serial (with warranty protection)
+const deleteProductSerial = async (productId, serialId) => {
+  // Check if serial exists and belongs to product
+  const [serial] = await pool.query(
+    `SELECT sn.id, sn.serial, sn.is_used, wr.id as warranty_id
+     FROM serial_numbers sn
+     LEFT JOIN warranty_registrations wr ON sn.id = wr.serial_number_id
+     WHERE sn.id = ? AND sn.product_id = ?`,
+    [serialId, productId]
+  );
+
+  if (serial.length === 0) {
+    throw { status: 404, message: "Serial number not found for this product" };
+  }
+
+  // Prevent deletion if has warranty registration
+  if (serial[0].warranty_id) {
+    throw {
+      status: 409,
+      message: `Cannot delete serial '${serial[0].serial}' - it has an active warranty registration`,
+    };
+  }
+
+  // Delete the serial
+  await pool.query("DELETE FROM serial_numbers WHERE id = ?", [serialId]);
+
+  // Update product quantity
+  await pool.query(
+    `UPDATE products 
+     SET quantity = (SELECT COUNT(*) FROM serial_numbers WHERE product_id = ?) 
+     WHERE id = ?`,
+    [productId, productId]
+  );
+
+  return { deleted: serial[0].serial };
 };
 
-const deleteBatch = async (batchNumber) => {
-  const [result] = await pool.query('DELETE FROM product_serials WHERE batch_number = ?', [batchNumber]);
-  return result.affectedRows;
+// Edit specific serial number
+const updateProductSerial = async (productId, serialId, newSerial) => {
+  const cleanedSerial = newSerial.trim().toUpperCase();
+
+  // Validate format
+  if (!/^[A-Z0-9]+$/.test(cleanedSerial)) {
+    throw { status: 400, message: "Invalid serial number format" };
+  }
+
+  // Check if serial exists and belongs to product
+  const [existing] = await pool.query(
+    `SELECT serial FROM serial_numbers WHERE id = ? AND product_id = ?`,
+    [serialId, productId]
+  );
+
+  if (existing.length === 0) {
+    throw { status: 404, message: "Serial number not found for this product" };
+  }
+
+  // Check if new serial already exists (excluding current one)
+  const [duplicate] = await pool.query(
+    "SELECT id FROM serial_numbers WHERE serial = ? AND id != ?",
+    [cleanedSerial, serialId]
+  );
+
+  if (duplicate.length > 0) {
+    throw { status: 409, message: `Serial '${cleanedSerial}' already exists` };
+  }
+
+  // Update the serial
+  await pool.query("UPDATE serial_numbers SET serial = ? WHERE id = ?", [
+    cleanedSerial,
+    serialId,
+  ]);
+
+  return {
+    id: serialId,
+    oldSerial: existing[0].serial,
+    newSerial: cleanedSerial,
+  };
 };
 
-const getSerialStatistics = async (productId = null) => {
-  let query = `
-    SELECT
-      COUNT(*) as total_serials,
-      SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available_serials,
-      SUM(CASE WHEN status = 'sold' THEN 1 ELSE 0 END) as sold,
-      SUM(CASE WHEN status = 'registered' THEN 1 ELSE 0 END) as used_serials,
-      SUM(CASE WHEN status = 'blocked' THEN 1 ELSE 0 END) as blocked
-    FROM product_serials
-  `;
-  const params = [];
-  if (productId) { query += ' WHERE product_id = ?'; params.push(productId); }
-  const [[stats]] = await pool.query(query, params);
-  return stats;
+// Check if serial number is available globally
+const checkSerialAvailability = async (serial) => {
+  const cleanedSerial = serial.trim().toUpperCase();
+  const [rows] = await pool.query(
+    `SELECT 
+       sn.id,
+       sn.product_id,
+       p.name as product_name,
+       sn.is_used,
+       c.name as category_name
+     FROM serial_numbers sn
+     JOIN products p ON sn.product_id = p.id
+     JOIN categories c ON p.category_id = c.id
+     WHERE sn.serial = ?`,
+    [cleanedSerial]
+  );
+
+  return {
+    available: rows.length === 0,
+    exists: rows.length > 0,
+    details: rows.length > 0 ? rows[0] : null,
+  };
+};
+
+// Get serial statistics for a product
+const getProductSerialStats = async (productId) => {
+  const [stats] = await pool.query(
+    `SELECT 
+       COUNT(*) as total_serials,
+       SUM(CASE WHEN is_used = 1 THEN 1 ELSE 0 END) as used_serials,
+       SUM(CASE WHEN is_used = 0 THEN 1 ELSE 0 END) as available_serials
+     FROM serial_numbers 
+     WHERE product_id = ?`,
+    [productId]
+  );
+  return stats[0];
 };
 
 module.exports = {
-  createSerialTable, 
-  addSerials, 
-  checkSerial, 
-  getSerialsByProduct, 
-  getAllSerials,
-  updateSerialStatus, 
-  deleteSerial, 
-  deleteBatch, 
-  getSerialStatistics,
-  generateEnhancedSerial, 
-  validateSerialChecksum, 
-  isNewFormatSerial
+  getProductSerials,
+  addProductSerials,
+  deleteProductSerial,
+  updateProductSerial,
+  checkSerialAvailability,
+  getProductSerialStats,
 };
