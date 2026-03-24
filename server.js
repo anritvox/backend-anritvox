@@ -4,8 +4,6 @@ const cors = require("cors");
 const pool = require("./config/db");
 const path = require("path");
 
-const { createSerialTable } = require('./models/serialModel');
-
 const categoryRoutes = require("./routes/categoryRoutes");
 const subcategoryRoutes = require("./routes/subcategoryRoutes");
 const productRoutes = require("./routes/productRoutes");
@@ -33,7 +31,6 @@ const app = express();
 app.use(express.json());
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// CORS setup for Railway to Vercel
 const allowedOrigins = [
   "http://localhost:5173",
   "https://anritvox-frontend.vercel.app",
@@ -52,7 +49,6 @@ app.use(cors({
   credentials: true,
 }));
 
-// API Routes
 app.use("/api/categories", categoryRoutes);
 app.use("/api/subcategories", subcategoryRoutes);
 app.use("/api/products", productRoutes);
@@ -77,11 +73,6 @@ app.use("/api/inventory", inventoryRoutes);
 app.use("/api/banners", bannerRoutes);
 
 app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running on Railway!" }));
-
-// --- FIX: Execute the table creation before starting the server--
-createSerialTable()
-  .then(() => console.log("product_serials table is verified/ready"))
-  .catch((err) => console.error("Failed to create product_serials table:", err));
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
