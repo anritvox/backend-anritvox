@@ -58,7 +58,7 @@ router.post("/generate", authenticateAdmin, async (req, res) => {
       totalGenerated: result.added,
     });
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    res.status(err.status || 500).json({ message: err.message });
   }
 });
 
@@ -130,6 +130,5 @@ router.post("/check", async (req, res) => {
     res.status(err.status || 500).json({ success: false, message: err.message });
   }
 });
-
 
 module.exports = router;
