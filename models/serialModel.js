@@ -1,7 +1,5 @@
-// backend/models/serialModel.js
 const pool = require("../config/db");
 
-// Get all serials for a specific product
 const getProductSerials = async (productId) => {
   const [rows] = await pool.query(
     `SELECT 
@@ -24,9 +22,7 @@ const getProductSerials = async (productId) => {
   return rows;
 };
 
-// Add new serials to existing product
 const addProductSerials = async (productId, serials) => {
-  // Validate product exists
   const [product] = await pool.query(
     "SELECT id, name FROM products WHERE id = ?",
     [productId]
@@ -35,9 +31,8 @@ const addProductSerials = async (productId, serials) => {
     throw { status: 404, message: "Product not found" };
   }
 
-  // Clean and validate serials
   const cleanedSerials = serials.map((s) => s.trim().toUpperCase());
-  const invalidSerials = cleanedSerials.filter((s) => !/^[A-Z0-9]+$/.test(s));
+  const invalidSerials = cleanedSerials.filter((s) => !/^[A-Z0-9-]+$/.test(s));
 
   if (invalidSerials.length > 0) {
     throw {
@@ -46,7 +41,6 @@ const addProductSerials = async (productId, serials) => {
     };
   }
 
-  // Check for duplicates within the batch
   const duplicatesInBatch = cleanedSerials.filter(
     (s, i) => cleanedSerials.indexOf(s) !== i
   );
@@ -59,7 +53,6 @@ const addProductSerials = async (productId, serials) => {
     };
   }
 
-  // Check for existing serials in database
   const [existing] = await pool.query(
     "SELECT serial FROM serial_numbers WHERE serial IN (?)",
     [cleanedSerials]
@@ -74,14 +67,12 @@ const addProductSerials = async (productId, serials) => {
     };
   }
 
-  // Insert new serials
   const values = cleanedSerials.map((serial) => [productId, serial, 0]);
   const [result] = await pool.query(
     "INSERT INTO serial_numbers (product_id, serial, is_used) VALUES ?",
     [values]
   );
 
-  // Update product quantity
   await pool.query(
     `UPDATE products 
      SET quantity = (SELECT COUNT(*) FROM serial_numbers WHERE product_id = ?) 
@@ -96,9 +87,7 @@ const addProductSerials = async (productId, serials) => {
   };
 };
 
-// Delete specific serial (with warranty protection)
 const deleteProductSerial = async (productId, serialId) => {
-  // Check if serial exists and belongs to product
   const [serial] = await pool.query(
     `SELECT sn.id, sn.serial, sn.is_used, wr.id as warranty_id
      FROM serial_numbers sn
@@ -111,7 +100,6 @@ const deleteProductSerial = async (productId, serialId) => {
     throw { status: 404, message: "Serial number not found for this product" };
   }
 
-  // Prevent deletion if has warranty registration
   if (serial[0].warranty_id) {
     throw {
       status: 409,
@@ -119,10 +107,8 @@ const deleteProductSerial = async (productId, serialId) => {
     };
   }
 
-  // Delete the serial
   await pool.query("DELETE FROM serial_numbers WHERE id = ?", [serialId]);
 
-  // Update product quantity
   await pool.query(
     `UPDATE products 
      SET quantity = (SELECT COUNT(*) FROM serial_numbers WHERE product_id = ?) 
@@ -133,16 +119,13 @@ const deleteProductSerial = async (productId, serialId) => {
   return { deleted: serial[0].serial };
 };
 
-// Edit specific serial number
 const updateProductSerial = async (productId, serialId, newSerial) => {
   const cleanedSerial = newSerial.trim().toUpperCase();
 
-  // Validate format
-  if (!/^[A-Z0-9]+$/.test(cleanedSerial)) {
+  if (!/^[A-Z0-9-]+$/.test(cleanedSerial)) {
     throw { status: 400, message: "Invalid serial number format" };
   }
 
-  // Check if serial exists and belongs to product
   const [existing] = await pool.query(
     `SELECT serial FROM serial_numbers WHERE id = ? AND product_id = ?`,
     [serialId, productId]
@@ -152,7 +135,6 @@ const updateProductSerial = async (productId, serialId, newSerial) => {
     throw { status: 404, message: "Serial number not found for this product" };
   }
 
-  // Check if new serial already exists (excluding current one)
   const [duplicate] = await pool.query(
     "SELECT id FROM serial_numbers WHERE serial = ? AND id != ?",
     [cleanedSerial, serialId]
@@ -162,7 +144,6 @@ const updateProductSerial = async (productId, serialId, newSerial) => {
     throw { status: 409, message: `Serial '${cleanedSerial}' already exists` };
   }
 
-  // Update the serial
   await pool.query("UPDATE serial_numbers SET serial = ? WHERE id = ?", [
     cleanedSerial,
     serialId,
@@ -175,7 +156,6 @@ const updateProductSerial = async (productId, serialId, newSerial) => {
   };
 };
 
-// Check if serial number is available globally
 const checkSerialAvailability = async (serial) => {
   const cleanedSerial = serial.trim().toUpperCase();
   const [rows] = await pool.query(
@@ -199,7 +179,6 @@ const checkSerialAvailability = async (serial) => {
   };
 };
 
-// Get serial statistics for a product
 const getProductSerialStats = async (productId) => {
   const [stats] = await pool.query(
     `SELECT 
