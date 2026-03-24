@@ -22,37 +22,43 @@ res.status(err.status || 500).json({ success: false, message: err.message });
 }
 });
 
-router.get("/:productId/stats", async (req, res) => {
-try {
-const productId = req.params.productId;
-const stats = await getProductSerialStats(productId);
-res.json({ success: true, stats });
-} catch (err) {
-res.status(err.status || 500).json({ success: false, message: err.message });
-}
-});
+router.post('/generate', authenticateAdmin, async (req, res) => {
+  try {
+    const { productId, count, batchNumber, prefix } = req.body;
+    
+    if (!productId || !count) {
+      return res.status(400).json({ message: 'Product ID and Count are required' });
+    }
+    
+    const customString = prefix || 'CUSTOM';
+    
+    if (customString.length !== 6) {
+      return res.status(400).json({ message: 'Custom string must be exactly 6 characters long' });
+    }
 
-router.post("/generate", async (req, res) => {
-try {
-const { productId, count, prefix } = req.body;
+    const generatedSerials = [];
+    const characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
-if (!productId || !count || count < 1) {
-return res.status(400).json({
-success: false,
-message: "Product ID and count are required, count must be at least 1",
-});
-}
-
-const serials = Array.from({ length: count }, (_, i) => {
-const numPart = (i + 1).toString().padStart(6, "0");
-return (prefix ? prefix.toUpperCase() + "-" : "") + numPart;
-});
-
-const result = await addSerials(productId, serials);
-res.json({ success: true, result });
-} catch (err) {
-res.status(err.status || 500).json({ success: false, message: err.message });
-}
+    for (let i = 0; i < count; i++) {
+      let randomString = '';
+      for (let j = 0; j < 6; j++) {
+        randomString += characters.charAt(Math.floor(Math.random() * characters.length));
+      }
+      const batchString = batchNumber ? `${batchNumber}` : '';
+      generatedSerials.push(`${customString}${batchString}${randomString}`);
+    }
+    
+    const result = await addProductSerials(productId, generatedSerials);
+    
+    res.status(201).json({ 
+      message: `${count} Serials generated successfully`, 
+      count: result.added,
+      serials: result.serials.slice(0, 10),
+      totalGenerated: result.added
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
 router.post("/:productId/add", async (req, res) => {
