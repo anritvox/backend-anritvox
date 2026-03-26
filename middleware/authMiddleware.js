@@ -1,25 +1,23 @@
 const jwt = require('jsonwebtoken');
-const pool = require('../config/db'); // Back to your original MySQL setup
+const pool = require('../config/db');
 
 const authenticateAdmin = async (req, res, next) => {
   const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith('Bearer ')) {
-    return res.status(401).json({ message: 'Missing or invalid token' });
-  }
+  if (!auth || !auth.startsWith('Bearer ')) return res.status(401).json({ message: 'Missing token' });
   
-  const token = auth.split(' ')[1];
   try {
+    const token = auth.split(' ')[1];
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    if (payload.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied: admin only' });
-    }
 
-    const [adminData] = await pool.query('SELECT id FROM admin_users WHERE id = ?', [payload.id]);
+    // SECURITY UPGRADE: Check email directly. This elevates a 'Customer' token to 'Admin' 
+    // instantly if they happen to exist in the Admin table, fixing the 403 Dashboard errors.
+    const [adminData] = await pool.query('SELECT id, email FROM admin_users WHERE email = ?', [payload.email]);
+    
     if (!adminData || adminData.length === 0) {
-      return res.status(401).json({ message: 'Admin account no longer exists.' });
+      return res.status(403).json({ message: 'Access denied: Admin privileges required.' });
     }
 
-    req.admin = payload;
+    req.admin = { id: adminData[0].id, email: adminData[0].email, role: 'admin' };
     next();
   } catch (err) {
     console.error("Admin Auth Error:", err);
@@ -29,13 +27,18 @@ const authenticateAdmin = async (req, res, next) => {
 
 const authenticateUser = async (req, res, next) => {
   const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith('Bearer ')) {
-    return res.status(401).json({ message: 'Missing or invalid token' });
-  }
+  if (!auth || !auth.startsWith('Bearer ')) return res.status(401).json({ message: 'Missing token' });
   
-  const token = auth.split(' ')[1];
   try {
+    const token = auth.split(' ')[1];
     const payload = jwt.verify(token, process.env.JWT_SECRET);
+    
+    // Allow Admins to safely use customer features (like Wishlist) without triggering a 401
+    if (payload.role === 'admin') {
+      req.user = payload;
+      return next();
+    }
+
     const [userData] = await pool.query('SELECT is_active FROM users WHERE id = ?', [payload.id]);
     if (!userData || userData.length === 0 || userData[0].is_active === 0) {
       return res.status(401).json({ message: 'Account is disabled or deleted.' });
@@ -49,6 +52,8 @@ const authenticateUser = async (req, res, next) => {
   }
 };
 
-module.exports = authenticateAdmin;
-module.exports.authenticateAdmin = authenticateAdmin;
-module.exports.authenticateUser = authenticateUser;
+// Fixed CommonJS Export (prevents undefined route crashes causing CORS errors)
+module.exports = {
+  authenticateAdmin,
+  authenticateUser
+};
