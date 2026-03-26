@@ -1,4 +1,5 @@
-// backend/models/notificationModel.js
+// backend/models/notificationModel
+
 const pool = require('../config/db');
 
 const createNotificationTable = async () => {
