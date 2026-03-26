@@ -38,13 +38,6 @@ const allowedOrigins = [
   "https://anritvox.com",
 ];
 
-const allowedOrigins = [
-  "http://localhost:5173",
-  "https://anritvox-frontend.vercel.app",
-  "https://www.anritvox.com",
-  "https://anritvox.com",
-];
-
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
