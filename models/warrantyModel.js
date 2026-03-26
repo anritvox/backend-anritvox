@@ -1,9 +1,30 @@
 const pool = require("../config/db");
 require('dotenv').config();
-const CLOUDFRONT_BASE_URL = process.env.CLOUDFRONT_BASE_URL;
+const CLOUDFRONT_BASE_URL = process.env.CLOUDFRONT_BASE_URL || "";
+
+// Bulletproof Table Initialization
+const initWarrantyTable = async () => {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS warranty_registrations (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      registered_serial VARCHAR(255) NOT NULL,
+      product_id INT NOT NULL,
+      user_name VARCHAR(255),
+      user_email VARCHAR(255),
+      user_phone VARCHAR(50),
+      purchase_date DATE,
+      invoice_number VARCHAR(100),
+      status ENUM('pending', 'accepted', 'rejected') DEFAULT 'pending',
+      registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+};
 
 const validateSerial = async (serial) => {
-  const s = serial.trim().toUpperCase();
+  // Defensive null-check to prevent fatal TypeError crashes
+  if (!serial) throw { status: 400, message: "Serial number is missing." };
+  
+  const s = String(serial).trim().toUpperCase();
   
   const [rows] = await pool.query(
     `SELECT ps.id AS serial_id, ps.product_id, ps.serial_number, ps.status, 
@@ -16,7 +37,7 @@ const validateSerial = async (serial) => {
     [s]
   );
   
-  if (rows.length === 0) throw { status: 404, message: "Serial number not found in our authentic database." };
+  if (rows.length === 0) throw { status: 404, message: "Serial number not found in our database." };
   
   const rec = rows[0];
 
@@ -30,9 +51,21 @@ const validateSerial = async (serial) => {
   return rec;
 };
 
-const registerWarranty = async ({ serialNumber, productId, customerName, email, phone, purchaseDate, invoiceNumber }) => {
-  const rec = await validateSerial(serialNumber);
-  if (rec.product_id !== Number(productId)) throw { status: 400, message: "Product mismatch for given serial number." };
+const registerWarranty = async (data) => {
+  await initWarrantyTable(); // Ensure table exists to prevent ER_NO_SUCH_TABLE crashes
+
+  // Safely extract from either frontend payload format
+  const { serialNumber, serial, productId, customerName, email, phone, purchaseDate, invoiceNumber } = data;
+  const targetSerial = serialNumber || serial;
+  
+  if (!targetSerial) throw { status: 400, message: "Serial number is required." };
+  if (!productId) throw { status: 400, message: "Product ID is required." };
+
+  const rec = await validateSerial(targetSerial);
+  
+  if (Number(rec.product_id) !== Number(productId)) {
+      throw { status: 400, message: "Product mismatch for given serial number." };
+  }
 
   if (rec.status === 'registered' || rec.status === 'sold') {
     throw { status: 400, message: "This serial number is already registered for warranty." };
@@ -45,7 +78,7 @@ const registerWarranty = async ({ serialNumber, productId, customerName, email, 
       `INSERT INTO warranty_registrations 
         (registered_serial, product_id, user_name, user_email, user_phone, purchase_date, invoice_number, status) 
        VALUES (?, ?, ?, ?, ?, ?, ?, 'accepted')`,
-      [rec.serial_number, productId, customerName, email, phone, purchaseDate, invoiceNumber]
+      [rec.serial_number, productId, customerName || null, email || null, phone || null, purchaseDate || null, invoiceNumber || null]
     );
     await conn.query(`UPDATE product_serials SET status = 'registered' WHERE serial_number = ?`, [rec.serial_number]);
     await conn.commit();
@@ -59,6 +92,7 @@ const registerWarranty = async ({ serialNumber, productId, customerName, email, 
 };
 
 const getAllRegistrations = async () => {
+  await initWarrantyTable();
   const [rows] = await pool.query(
     `SELECT wr.*, p.name AS product_name 
      FROM warranty_registrations wr 
@@ -90,4 +124,4 @@ const deleteWarranty = async (id) => {
   }
 };
 
-module.exports = { validateSerial, registerWarranty, getAllRegistrations, updateWarrantyStatus, deleteWarranty };
+module.exports = { validateSerial, registerWarranty, getAllRegistrations, updateWarrantyStatus, deleteWarranty, initWarrantyTable };
