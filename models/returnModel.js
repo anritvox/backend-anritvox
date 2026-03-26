@@ -1,4 +1,4 @@
-// backend/models/returnModel.js
+// backend/models/returnModel
 const pool = require('../config/db');
 
 const createReturnTable = async () => {
