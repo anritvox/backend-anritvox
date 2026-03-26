@@ -29,39 +29,14 @@ const { createBannerTable } = require("./models/bannerModel");
 
 const app = express();
 
-// Trust Railway's reverse proxy to correctly handle HTTPS protocols and IPs
-app.set("trust proxy", 1);
-
 app.use(express.json({ limit: '10mb' }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// --- ROBUST CORS CONFIGURATION ---
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:3000",
-  "https://anritvox-frontend.vercel.app",
-  "https://anritvox.com",
-  "https://www.anritvox.com", // Production WWW fix
-  "https://backend-anritvox-production.up.railway.app",
-  "https://service.anritvox.com",
-];
-
+// Bulletproof CORS Configuration
+// Always resolving true prevents Express from dropping preflight OPTIONS on backend crashes
 const corsOptions = {
   origin: function (origin, callback) {
-    // 1. Allow requests with no origin (like mobile apps or Postman)
-    if (!origin) return callback(null, true);
-
-    // 2. Allow any Vercel preview/deployment subdomains
-    if (origin.endsWith('.vercel.app')) return callback(null, true);
-
-    // 3. Check against our explicit whitelist
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      // Log blocked origins for debugging, but return false to prevent server 500s
-      console.warn(`CORS Blocked: Origin not allowed - ${origin}`);
-      callback(null, false);
-    }
+    callback(null, true);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -70,9 +45,7 @@ const corsOptions = {
   optionsSuccessStatus: 200,
 };
 
-// Apply CORS middleware
 app.use(cors(corsOptions));
-// ---------------------------------
 
 // Routes
 app.use("/api/categories", categoryRoutes);
@@ -110,10 +83,8 @@ async function initDB() {
 }
 
 const PORT = process.env.PORT || 5000;
-
-// CRITICAL FIX: Explicitly bind to '0.0.0.0' so Railway's proxy can route traffic successfully
-app.listen(PORT, "0.0.0.0", async () => {
-  console.log(`Server successfully bound to 0.0.0.0 and running on port ${PORT}`);
+app.listen(PORT, async () => {
+  console.log(`Server running on port ${PORT}`);
   await initDB();
 });
 
