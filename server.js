@@ -29,6 +29,9 @@ const { createBannerTable } = require("./models/bannerModel");
 
 const app = express();
 
+// Trust Railway's reverse proxy to correctly handle HTTPS protocols and IPs
+app.set("trust proxy", 1);
+
 app.use(express.json({ limit: '10mb' }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
@@ -48,7 +51,10 @@ const corsOptions = {
     if (!origin) return callback(null, true);
     if (origin.endsWith('.vercel.app')) return callback(null, true);
     if (allowedOrigins.includes(origin)) return callback(null, true);
-    return callback(new Error('CORS: Origin not allowed: ' + origin), false);
+    
+    // Log blocked origins instead of throwing an error that could bubble up and cause 500s
+    console.warn(`CORS Blocked: Origin not allowed - ${origin}`);
+    return callback(null, false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -57,6 +63,7 @@ const corsOptions = {
   optionsSuccessStatus: 200,
 };
 
+// Apply CORS middleware
 app.use(cors(corsOptions));
 
 // Routes
@@ -95,8 +102,10 @@ async function initDB() {
 }
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, async () => {
-  console.log(`Server running on port ${PORT}`);
+
+// CRITICAL FIX: Explicitly bind to '0.0.0.0' so Railway's proxy can route traffic successfully
+app.listen(PORT, "0.0.0.0", async () => {
+  console.log(`Server successfully bound to 0.0.0.0 and running on port ${PORT}`);
   await initDB();
 });
 
