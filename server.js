@@ -32,7 +32,7 @@ const app = express();
 app.use(express.json({ limit: '10mb' }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Allowed origins
+// Allowed origins for CORS
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000",
@@ -55,15 +55,11 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   exposedHeaders: ['Content-Disposition'],
   optionsSuccessStatus: 200,
-  preflightContinue: false,
 };
 
-// Apply CORS - must be before all routes
+// Apply CORS middleware - handles preflight OPTIONS automatically
+// Do NOT add app.options() - path-to-regexp on this Railway build rejects all wildcard patterns
 app.use(cors(corsOptions));
-
-// Handle OPTIONS preflight for all routes
-// NOTE: Use '/(.*)'  not '*' - newer path-to-regexp versions don't accept bare '*'
-app.options('/(.*)', cors(corsOptions));
 
 // Routes
 app.use("/api/categories", categoryRoutes);
