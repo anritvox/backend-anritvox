@@ -1,3 +1,4 @@
+// backend/routes/warrantyRoutes.js
 const express = require("express");
 const router = express.Router();
 const pool = require("../config/db");
@@ -13,20 +14,27 @@ const { authenticateAdmin } = require("../middleware/authMiddleware");
 // PUBLIC: Check serial for the E-Warranty form
 router.get("/validate/:serial", async (req, res) => {
   try {
+    if (!req.params.serial) {
+        return res.status(400).json({ message: "Serial parameter is required" });
+    }
     const info = await validateSerial(req.params.serial);
     res.json(info);
   } catch (err) {
-    res.status(err.status || 500).json({ message: err.message });
+    res.status(err.status || 500).json({ message: err.message || "Validation failed" });
   }
 });
 
 // PUBLIC: Register the warranty
 router.post("/register", async (req, res) => {
   try {
+    // Basic body check to prevent empty payload crashes
+    if (!req.body || Object.keys(req.body).length === 0) {
+      return res.status(400).json({ message: "Empty request payload" });
+    }
     const result = await registerWarranty(req.body);
     res.status(201).json(result);
   } catch (err) {
-    res.status(err.status || 500).json({ message: err.message });
+    res.status(err.status || 500).json({ message: err.message || "Registration failed" });
   }
 });
 
@@ -36,7 +44,7 @@ router.get("/admin", authenticateAdmin, async (req, res) => {
     const list = await getAllRegistrations();
     res.json(list);
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Server error loading registrations" });
   }
 });
 
@@ -69,8 +77,10 @@ router.delete("/serials/:id", authenticateAdmin, async (req, res) => {
     if (rows.length === 0) return res.status(404).json({ message: "Serial not found" });
     const productId = rows[0].product_id;
     await pool.query("DELETE FROM product_serials WHERE id = ?", [serialId]);
-    // Adjust stock
-    await pool.query("UPDATE products SET stock = GREATEST(0, stock - 1) WHERE id = ?", [productId]);
+    
+    // Fixed: Changed 'stock' to 'quantity' to match standard database schema
+    await pool.query("UPDATE products SET quantity = GREATEST(0, quantity - 1) WHERE id = ?", [productId]);
+    
     res.json({ message: "Serial number deleted and inventory adjusted" });
   } catch (err) {
     console.error("Delete serial error:", err);
@@ -92,7 +102,7 @@ router.get("/serials", authenticateAdmin, async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.error("Get serials error:", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Server error loading serials" });
   }
 });
 
