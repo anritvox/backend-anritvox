@@ -35,26 +35,33 @@ app.set("trust proxy", 1);
 app.use(express.json({ limit: '10mb' }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Allowed origins for CORS
+// --- ROBUST CORS CONFIGURATION ---
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000",
   "https://anritvox-frontend.vercel.app",
-  "https://www.anritvox.com",
   "https://anritvox.com",
+  "https://www.anritvox.com", // Production WWW fix
   "https://backend-anritvox-production.up.railway.app",
   "https://service.anritvox.com",
 ];
 
 const corsOptions = {
   origin: function (origin, callback) {
+    // 1. Allow requests with no origin (like mobile apps or Postman)
     if (!origin) return callback(null, true);
+
+    // 2. Allow any Vercel preview/deployment subdomains
     if (origin.endsWith('.vercel.app')) return callback(null, true);
-    if (allowedOrigins.includes(origin)) return callback(null, true);
-    
-    // Log blocked origins instead of throwing an error that could bubble up and cause 500s
-    console.warn(`CORS Blocked: Origin not allowed - ${origin}`);
-    return callback(null, false);
+
+    // 3. Check against our explicit whitelist
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      // Log blocked origins for debugging, but return false to prevent server 500s
+      console.warn(`CORS Blocked: Origin not allowed - ${origin}`);
+      callback(null, false);
+    }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -65,6 +72,7 @@ const corsOptions = {
 
 // Apply CORS middleware
 app.use(cors(corsOptions));
+// ---------------------------------
 
 // Routes
 app.use("/api/categories", categoryRoutes);
