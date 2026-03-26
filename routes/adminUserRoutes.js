@@ -15,7 +15,7 @@ const {
 const { getAllOrders, updateOrderStatus, getOrderById } = require('../models/orderModel');
 const { sendMail } = require('../utils/mail');
 
-// ─── USERS ──────────────────────────────────────────────
+// ─── USERS ───────────────────────────────────────────────────────────
 
 // GET /api/admin/users
 router.get('/users', authenticateAdmin, async (req, res) => {
@@ -38,7 +38,7 @@ router.get('/users/:id', authenticateAdmin, async (req, res) => {
   }
 });
 
-// PUT /api/admin/users/:id/status  { is_active: 0|1 }
+// PUT /api/admin/users/:id/status { is_active: 0|1 }
 router.put('/users/:id/status', authenticateAdmin, async (req, res) => {
   try {
     await updateUserStatus(req.params.id, req.body.is_active);
@@ -49,13 +49,10 @@ router.put('/users/:id/status', authenticateAdmin, async (req, res) => {
 });
 
 // POST /api/admin/users/:id/reset-password
-// Admin triggers a password reset OTP email for the user
 router.post('/users/:id/reset-password', authenticateAdmin, async (req, res) => {
   try {
     const user = await getUserById(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
-
-    // Option A: admin sets a temporary password directly (if newPassword provided)
     const { newPassword } = req.body;
     if (newPassword) {
       if (newPassword.length < 6) {
@@ -65,8 +62,6 @@ router.post('/users/:id/reset-password', authenticateAdmin, async (req, res) => 
       await updateUserPassword(user.id, hash);
       return res.json({ message: `Password for ${user.email} has been reset.` });
     }
-
-    // Option B: send OTP reset email to user
     const { saveResetOtp } = require('../models/userModel');
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = Date.now() + 15 * 60 * 1000;
@@ -94,7 +89,7 @@ router.delete('/users/:id', authenticateAdmin, async (req, res) => {
   }
 });
 
-// ─── ORDERS ──────────────────────────────────────────────
+// ─── ORDERS ───────────────────────────────────────────────────────────
 
 // GET /api/admin/orders
 router.get('/orders', authenticateAdmin, async (req, res) => {
@@ -117,7 +112,7 @@ router.get('/orders/:id', authenticateAdmin, async (req, res) => {
   }
 });
 
-// PUT /api/admin/orders/:id/status  { status: 'shipped' }
+// PUT /api/admin/orders/:id/status { status: 'shipped' }
 router.put('/orders/:id/status', authenticateAdmin, async (req, res) => {
   try {
     const validStatuses = ['pending', 'confirmed', 'packed', 'shipped', 'delivered', 'cancelled', 'returned'];
@@ -131,13 +126,11 @@ router.put('/orders/:id/status', authenticateAdmin, async (req, res) => {
   }
 });
 
-module.exports = router;
-
-// Feature: GET /api/admin/orders/export/csv - Export orders as CSV
+// GET /api/admin/orders/export/csv - Export orders as CSV
 router.get('/orders/export/csv', authenticateAdmin, async (req, res) => {
   try {
     const orders = await getAllOrders();
-    const headers = ['ID','Status','Total','Customer Email','Created'];
+    const headers = ['ID', 'Status', 'Total', 'Customer Email', 'Created'];
     const rows = orders.map(o => [
       o.id, o.status, o.total_amount || 0, o.email || '', o.created_at || ''
     ]);
@@ -150,7 +143,7 @@ router.get('/orders/export/csv', authenticateAdmin, async (req, res) => {
   }
 });
 
-// Feature: GET /api/admin/dashboard - Dashboard summary stats
+// GET /api/admin/dashboard - Dashboard summary stats
 router.get('/dashboard', authenticateAdmin, async (req, res) => {
   try {
     const pool = require('../config/db');
@@ -166,11 +159,11 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
   }
 });
 
-// Feature: POST /api/admin/orders/bulk-status - Bulk update order status
+// POST /api/admin/orders/bulk-status - Bulk update order status
 router.post('/orders/bulk-status', authenticateAdmin, async (req, res) => {
   try {
     const { orderIds, status } = req.body;
-    const validStatuses = ['pending','confirmed','packed','shipped','delivered','cancelled'];
+    const validStatuses = ['pending', 'confirmed', 'packed', 'shipped', 'delivered', 'cancelled'];
     if (!validStatuses.includes(status)) return res.status(400).json({ message: 'Invalid status' });
     if (!Array.isArray(orderIds) || orderIds.length === 0) return res.status(400).json({ message: 'No order IDs provided' });
     const pool = require('../config/db');
@@ -181,7 +174,7 @@ router.post('/orders/bulk-status', authenticateAdmin, async (req, res) => {
   }
 });
 
-// Feature: GET /api/admin/customers/segments - Customer segmentation
+// GET /api/admin/customers/segments - Customer segmentation
 router.get('/customers/segments', authenticateAdmin, async (req, res) => {
   try {
     const pool = require('../config/db');
@@ -192,3 +185,5 @@ router.get('/customers/segments', authenticateAdmin, async (req, res) => {
     return res.status(500).json({ message: 'Failed to load segments' });
   }
 });
+
+module.exports = router;
