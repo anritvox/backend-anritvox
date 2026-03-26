@@ -1,4 +1,4 @@
-// backend/models/shippingModel.js
+// backend/models/shippingModel
 const pool = require('../config/db');
 
 const createShippingTable = async () => {
