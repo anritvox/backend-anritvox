@@ -1,27 +1,34 @@
+// backend/models/warrantyModel.js
 const pool = require("../config/db");
 require('dotenv').config();
 const CLOUDFRONT_BASE_URL = process.env.CLOUDFRONT_BASE_URL || "";
 
-// Bulletproof Table Initialization
+// Bulletproof Table Initialization & Dynamic Schema Patcher
 const initWarrantyTable = async () => {
+  // 1. Create base table if it doesn't exist at all
   await pool.query(`
     CREATE TABLE IF NOT EXISTS warranty_registrations (
       id INT AUTO_INCREMENT PRIMARY KEY,
       registered_serial VARCHAR(255) NOT NULL,
       product_id INT NOT NULL,
-      user_name VARCHAR(255),
-      user_email VARCHAR(255),
-      user_phone VARCHAR(50),
-      purchase_date DATE,
-      invoice_number VARCHAR(100),
       status ENUM('pending', 'accepted', 'rejected') DEFAULT 'pending',
       registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // 2. Safely patch missing columns (Fixes the ER_BAD_FIELD_ERROR crash)
+  const addCol = async (table, sql) => {
+    try { await pool.query(`ALTER TABLE ${table} ADD COLUMN ${sql}`); } catch (e) {}
+  };
+
+  await addCol('warranty_registrations', 'user_name VARCHAR(255) AFTER product_id');
+  await addCol('warranty_registrations', 'user_email VARCHAR(255) AFTER user_name');
+  await addCol('warranty_registrations', 'user_phone VARCHAR(50) AFTER user_email');
+  await addCol('warranty_registrations', 'purchase_date DATE AFTER user_phone');
+  await addCol('warranty_registrations', 'invoice_number VARCHAR(100) AFTER purchase_date');
 };
 
 const validateSerial = async (serial) => {
-  // Defensive null-check to prevent fatal TypeError crashes
   if (!serial) throw { status: 400, message: "Serial number is missing." };
   
   const s = String(serial).trim().toUpperCase();
@@ -52,9 +59,9 @@ const validateSerial = async (serial) => {
 };
 
 const registerWarranty = async (data) => {
-  await initWarrantyTable(); // Ensure table exists to prevent ER_NO_SUCH_TABLE crashes
+  // Ensure table and all new columns exist before inserting
+  await initWarrantyTable(); 
 
-  // Safely extract from either frontend payload format
   const { serialNumber, serial, productId, customerName, email, phone, purchaseDate, invoiceNumber } = data;
   const targetSerial = serialNumber || serial;
   
