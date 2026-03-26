@@ -49,7 +49,6 @@ app.use(cors({
   credentials: true,
 }));
 
-app.options('(.*)', cors());
 app.use("/api/categories", categoryRoutes);
 app.use("/api/subcategories", subcategoryRoutes);
 app.use("/api/products", productRoutes);
