@@ -223,4 +223,50 @@ router.delete('/:id', authenticateAdmin, async (req, res) => {
   }
 });
 
+// POST /api/products/:id/stock - adjust stock quantity (admin)
+router.post('/:id/stock', authenticateAdmin, async (req, res) => {
+  try {
+    const pool = require('../config/db');
+    const productId = req.params.id;
+    const { adjustment, stock } = req.body;
+    if (stock !== undefined) {
+      // Set absolute stock
+      const newStock = Math.max(0, parseInt(stock));
+      await pool.query('UPDATE products SET quantity = ?, updated_at = NOW() WHERE id = ?', [newStock, productId]);
+      return res.json({ message: 'Stock updated', stock: newStock });
+    } else if (adjustment !== undefined) {
+      // Relative adjustment (+/-)
+      const adj = parseInt(adjustment);
+      await pool.query('UPDATE products SET quantity = GREATEST(0, quantity + ?), updated_at = NOW() WHERE id = ?', [adj, productId]);
+      const [rows] = await pool.query('SELECT quantity FROM products WHERE id = ?', [productId]);
+      return res.json({ message: 'Stock adjusted', stock: rows[0]?.quantity });
+    } else {
+      return res.status(400).json({ error: 'Provide stock or adjustment value' });
+    }
+  } catch (err) {
+    console.error('Error adjusting stock:', err);
+    return res.status(500).json({ error: 'Unable to adjust stock' });
+  }
+});
+
+// PUT /api/products/:id/stock - update stock + lowStockThreshold (admin, from InventoryManagement)
+router.put('/:id/stock', authenticateAdmin, async (req, res) => {
+  try {
+    const pool = require('../config/db');
+    const productId = req.params.id;
+    const { stock, lowStockThreshold } = req.body;
+    const updates = [];
+    const params = [];
+    if (stock !== undefined) { updates.push('quantity = ?'); params.push(Math.max(0, parseInt(stock))); }
+    if (lowStockThreshold !== undefined) { updates.push('low_stock_threshold = ?'); params.push(parseInt(lowStockThreshold) || 10); }
+    if (updates.length === 0) return res.status(400).json({ error: 'No fields to update' });
+    params.push(productId);
+    await pool.query(`UPDATE products SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ?`, params);
+    return res.json({ message: 'Stock updated successfully' });
+  } catch (err) {
+    console.error('Error updating stock:', err);
+    return res.status(500).json({ error: 'Unable to update stock' });
+  }
+});
+
 module.exports = router;
