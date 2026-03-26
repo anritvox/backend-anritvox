@@ -3,7 +3,6 @@ const express = require("express");
 const cors = require("cors");
 const pool = require("./config/db");
 const path = require("path");
-
 const categoryRoutes = require("./routes/categoryRoutes");
 const subcategoryRoutes = require("./routes/subcategoryRoutes");
 const productRoutes = require("./routes/productRoutes");
@@ -26,9 +25,10 @@ const shippingRoutes = require("./routes/shippingRoutes");
 const returnRoutes = require("./routes/returnRoutes");
 const inventoryRoutes = require("./routes/inventoryRoutes");
 const bannerRoutes = require("./routes/bannerRoutes");
+const { createBannerTable } = require("./models/bannerModel");
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 const allowedOrigins = [
@@ -36,14 +36,15 @@ const allowedOrigins = [
   "https://anritvox-frontend.vercel.app",
   "https://www.anritvox.com",
   "https://anritvox.com",
+  "https://backend-anritvox-production.up.railway.app",
+  "https://service.anritvox.com",
 ];
-
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
       callback(null, true);
     } else {
-      callback(null, true); // Fallback bypass to prevent hard CORS drops from unknown proxies
+      callback(null, true);
     }
   },
   credentials: true,
@@ -74,7 +75,20 @@ app.use("/api/banners", bannerRoutes);
 
 app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running on Railway!" }));
 
+// Auto-create tables on startup (safe - uses IF NOT EXISTS)
+async function initDB() {
+  try {
+    await createBannerTable();
+    console.log("DB tables verified/created.");
+  } catch (err) {
+    console.error("DB init error:", err.message);
+  }
+}
+
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, async () => {
+  console.log(`Server running on port ${PORT}`);
+  await initDB();
+});
 
 module.exports = app;
