@@ -57,8 +57,6 @@ const corsOptions = {
   optionsSuccessStatus: 200,
 };
 
-// Apply CORS middleware - handles preflight OPTIONS automatically
-// Do NOT add app.options() - path-to-regexp on this Railway build rejects all wildcard patterns
 app.use(cors(corsOptions));
 
 // Routes
