@@ -28,28 +28,48 @@ const bannerRoutes = require("./routes/bannerRoutes");
 const { createBannerTable } = require("./models/bannerModel");
 
 const app = express();
+
 app.use(express.json({ limit: '10mb' }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
+// ─── CORS Configuration ──────────────────────────────────────────────────────
+// All allowed origins that can access this API
 const allowedOrigins = [
   "http://localhost:5173",
+  "http://localhost:3000",
   "https://anritvox-frontend.vercel.app",
   "https://www.anritvox.com",
   "https://anritvox.com",
   "https://backend-anritvox-production.up.railway.app",
   "https://service.anritvox.com",
 ];
-app.use(cors({
+
+const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
-      callback(null, true);
-    } else {
-      callback(null, true);
-    }
+    // Allow requests with no origin (mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+    // Allow any vercel.app subdomain (preview deployments)
+    if (origin.endsWith('.vercel.app')) return callback(null, true);
+    // Allow exact match
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    // Block everything else
+    return callback(new Error('CORS: Origin not allowed: ' + origin), false);
   },
   credentials: true,
-}));
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['Content-Disposition'],
+  optionsSuccessStatus: 200, // Some legacy browsers choke on 204
+  preflightContinue: false,
+};
 
+// Apply CORS middleware - must be BEFORE all routes
+app.use(cors(corsOptions));
+
+// Handle OPTIONS preflight for ALL routes explicitly
+app.options('*', cors(corsOptions));
+
+// ─── Routes ──────────────────────────────────────────────────────────────────
 app.use("/api/categories", categoryRoutes);
 app.use("/api/subcategories", subcategoryRoutes);
 app.use("/api/products", productRoutes);
