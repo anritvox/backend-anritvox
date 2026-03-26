@@ -1,40 +1,97 @@
-// Admin auth: login + change-password + profile
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const pool = require('../config/db');
-const { getAdminByEmail, getAdminById, verifyPassword, updateAdminPassword } = require("../models/adminModel");
+
+// Import BOTH Admin and Customer Models (Aliasing verifyPassword to prevent conflicts)
+const { getAdminByEmail, getAdminById, verifyPassword: verifyAdminPassword, updateAdminPassword } = require("../models/adminModel");
+const { createUser, getUserByEmail, getUserById, verifyPassword: verifyCustomerPassword } = require("../models/userModel");
 const { authenticateAdmin } = require('../middleware/authMiddleware');
+
 const router = express.Router();
 
-// POST /api/auth/login
+// POST /api/auth/register (Standard Customer Registration)
+router.post("/register", async (req, res) => {
+  try {
+    const { name, email, password, phone } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ message: "Name, email, and password are required" });
+    }
+
+    // Check if email already exists
+    const existingUser = await getUserByEmail(email);
+    if (existingUser) {
+      return res.status(409).json({ message: "Email is already registered" });
+    }
+
+    // Create the customer
+    const insertId = await createUser({ name, email, password, phone });
+    const user = await getUserById(insertId);
+
+    // Generate Token
+    const token = jwt.sign(
+      { id: user.id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    // Return unified user object
+    res.status(201).json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+  } catch (err) {
+    console.error("Register error:", err);
+    res.status(500).json({ message: "Server error during registration" });
+  }
+});
+
+// POST /api/auth/login (Smart Login: Handles BOTH Customers and Admins)
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password required" });
     }
+
+    // STEP 1: Attempt Customer Login First
+    const customer = await getUserByEmail(email);
+    if (customer) {
+      const validCustomer = await verifyCustomerPassword(password, customer.password_hash);
+      if (validCustomer) {
+        const token = jwt.sign(
+          { id: customer.id, email: customer.email, role: customer.role },
+          process.env.JWT_SECRET,
+          { expiresIn: "7d" }
+        );
+        return res.json({ token, user: { id: customer.id, name: customer.name, email: customer.email, role: customer.role } });
+      } else {
+        return res.status(401).json({ message: "Invalid credentials" });
+      }
+    }
+
+    // STEP 2: Fallback - Attempt Admin Login if customer email wasn't found
     const admin = await getAdminByEmail(email);
-    if (!admin) {
-      return res.status(401).json({ message: "Invalid credentials" });
+    if (admin) {
+      const validAdmin = await verifyAdminPassword(password, admin.password_hash);
+      if (validAdmin) {
+        const token = jwt.sign(
+          { id: admin.id, email: admin.email, role: "admin" },
+          process.env.JWT_SECRET,
+          { expiresIn: "7d" }
+        );
+        // Map admin data to "user" payload so frontend context parses it flawlessly
+        return res.json({ token, user: { id: admin.id, email: admin.email, role: "admin" } });
+      }
     }
-    const valid = await verifyPassword(password, admin.password_hash);
-    if (!valid) {
-      return res.status(401).json({ message: "Invalid credentials" });
-    }
-    const token = jwt.sign(
-      { id: admin.id, email: admin.email, role: "admin" },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-    res.json({ token, admin: { id: admin.id, email: admin.email, role: "admin" } });
+
+    // STEP 3: If completely not found in either table
+    return res.status(401).json({ message: "Invalid credentials" });
+
   } catch (err) {
     console.error("Auth error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// GET /api/auth/me  (verify admin token + return full profile)
+// GET /api/auth/me (Verify admin token + return full profile)
 router.get("/me", authenticateAdmin, async (req, res) => {
   try {
     const admin = await getAdminById(req.admin.id);
@@ -45,13 +102,13 @@ router.get("/me", authenticateAdmin, async (req, res) => {
   }
 });
 
-// PUT /api/auth/me  (update admin profile - email)
+// PUT /api/auth/me (Update admin profile - email)
 router.put("/me", authenticateAdmin, async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ message: "Email is required" });
     
-    // SECURITY FIX: Check for duplicate email to prevent database crash
+    // Check for duplicate email to prevent database crash
     const [existing] = await pool.query('SELECT id FROM admin_users WHERE email = ? AND id != ?', [email, req.admin.id]);
     if (existing.length > 0) {
       return res.status(409).json({ message: "This email is already registered to another admin." });
@@ -65,7 +122,7 @@ router.put("/me", authenticateAdmin, async (req, res) => {
   }
 });
 
-// POST /api/auth/change-password  (admin must be logged in)
+// POST /api/auth/change-password (Admin must be logged in)
 router.post("/change-password", authenticateAdmin, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -78,7 +135,7 @@ router.post("/change-password", authenticateAdmin, async (req, res) => {
     const admin = await getAdminByEmail(req.admin.email);
     if (!admin) return res.status(404).json({ message: "Admin not found" });
     
-    const valid = await verifyPassword(currentPassword, admin.password_hash);
+    const valid = await verifyAdminPassword(currentPassword, admin.password_hash);
     if (!valid) return res.status(401).json({ message: "Current password is incorrect" });
     
     const hash = await bcrypt.hash(newPassword, 10);
