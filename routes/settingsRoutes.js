@@ -1,4 +1,4 @@
-// backend/routes/settingsRoutes.js
+// backend/routes/settingsRoutes
 const express = require('express');
 const router = express.Router();
 const { authenticateAdmin } = require('../middleware/authMiddleware');
