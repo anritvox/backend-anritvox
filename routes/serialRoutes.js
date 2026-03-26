@@ -23,45 +23,45 @@ router.get("/:productId", async (req, res) => {
   }
 });
 
-// POST /api/serials/generate - generate serials AND auto-update product stock
+// POST /api/serials/generate - generate 10-digit serials
 router.post("/generate", authenticateAdmin, async (req, res) => {
   try {
-    const { productId, count, batchNumber, prefix } = req.body;
+    const { productId, count, prefix } = req.body;
+    
     if (!productId || !count) {
       return res.status(400).json({ message: "Product ID and Count are required" });
     }
-    const customString = prefix || "CUSTOM";
+    
+    const customString = prefix ? prefix.toUpperCase() : "CUSTOM";
+    
     if (customString.length !== 6) {
-      return res.status(400).json({ message: "Custom string must be exactly 6 characters long" });
+      return res.status(400).json({ message: "Model Prefix must be exactly 6 characters long (e.g., AV2316)" });
     }
+
     const generatedSerials = [];
     const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    
+    // EXACT 10-DIGIT LOGIC: 6 char prefix + 4 char random suffix
     for (let i = 0; i < count; i++) {
       let randomString = "";
-      for (let j = 0; j < 6; j++) {
+      for (let j = 0; j < 4; j++) {
         randomString += characters.charAt(Math.floor(Math.random() * characters.length));
       }
-      const batchString = batchNumber ? `${batchNumber}` : "";
-      generatedSerials.push(`${customString}${batchString}${randomString}`);
+      generatedSerials.push(`${customString}${randomString}`);
     }
 
+    // Insert serials (The model automatically and safely handles the stock/quantity sync)
     const result = await addProductSerials(productId, generatedSerials);
 
-    // AUTO-SYNC: Update product stock to reflect generated serial count
-    await pool.query(
-      "UPDATE products SET stock = stock + ? WHERE id = ?",
-      [result.added, productId]
-    );
-
-    // Get updated stock value to return
-    const [[product]] = await pool.query("SELECT stock FROM products WHERE id = ?", [productId]);
+    // Fetch the safely updated quantity to send back to the React UI
+    const [[product]] = await pool.query("SELECT quantity FROM products WHERE id = ?", [productId]);
 
     res.status(201).json({
-      message: `${count} Serials generated and inventory updated automatically`,
+      message: `${count} Serials generated in 10-digit format (e.g., ${generatedSerials[0]})`,
       count: result.added,
       serials: result.serials.slice(0, 10),
       totalGenerated: result.added,
-      newStock: product ? product.stock : null,
+      newStock: product ? product.quantity : null,
     });
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message });
@@ -73,12 +73,14 @@ router.post("/:productId/add", authenticateAdmin, async (req, res) => {
   try {
     const productId = req.params.productId;
     const { serials } = req.body;
+    
     if (!Array.isArray(serials) || serials.length === 0) {
       return res.status(400).json({ success: false, message: "Serials must be a non-empty array" });
     }
+    
+    // Model automatically syncs quantity
     const result = await addProductSerials(productId, serials);
-    // Also update stock
-    await pool.query("UPDATE products SET stock = stock + ? WHERE id = ?", [result.added, productId]);
+    
     res.json({ success: true, result });
   } catch (err) {
     res.status(err.status || 500).json({ success: false, message: err.message });
@@ -97,14 +99,15 @@ router.put("/:productId/:id", authenticateAdmin, async (req, res) => {
   }
 });
 
-// DELETE /api/serials/:productId/:id - delete a serial AND reduce stock
+// DELETE /api/serials/:productId/:id - delete a serial
 router.delete("/:productId/:id", authenticateAdmin, async (req, res) => {
   try {
     const { productId, id } = req.params;
+    
+    // Model automatically handles reducing the quantity dynamically
     const result = await deleteProductSerial(productId, id);
-    // Reduce stock by 1 when a serial is deleted
-    await pool.query("UPDATE products SET stock = GREATEST(0, stock - 1) WHERE id = ?", [productId]);
-    res.json({ success: true, result, message: "Serial deleted and stock adjusted" });
+    
+    res.json({ success: true, result, message: "Serial deleted successfully" });
   } catch (err) {
     res.status(err.status || 500).json({ success: false, message: err.message });
   }
