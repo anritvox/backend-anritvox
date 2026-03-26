@@ -1,4 +1,4 @@
-// backend/models/settingsModel.js
+// backend/models/settingsModel
 const pool = require('../config/db');
 
 const createSettingsTable = async () => {
