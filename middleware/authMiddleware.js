@@ -1,28 +1,21 @@
 const jwt = require('jsonwebtoken');
 
-// REMOVED top-level require('../config/db') to break circular dependency loops on startup.
-
+// authenticateAdmin: Verifies JWT and confirms role is 'admin'.
+// Uses JWT payload directly - no extra DB lookup needed (JWT is signed and trusted).
 const authenticateAdmin = async (req, res, next) => {
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Bearer ')) return res.status(401).json({ message: 'Missing token' });
-  
+
   try {
     const token = auth.split(' ')[1];
     const payload = jwt.verify(token, process.env.JWT_SECRET);
 
-    // LAZY LOAD: We require the DB pool here at runtime rather than startup.
-    // This completely prevents the empty object `{}` circular dependency crash.
-    const pool = require('../config/db');
-
-    // SECURITY UPGRADE: Check email directly. This elevates a 'Customer' token to 'Admin' 
-    // instantly if they happen to exist in the Admin table, fixing the 403 Dashboard errors.
-    const [adminData] = await pool.query('SELECT id, email FROM admin_users WHERE email = ?', [payload.email]);
-    
-    if (!adminData || adminData.length === 0) {
+    // Trust the role embedded in the signed JWT
+    if (payload.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied: Admin privileges required.' });
     }
 
-    req.admin = { id: adminData[0].id, email: adminData[0].email, role: 'admin' };
+    req.admin = { id: payload.id, email: payload.email, role: 'admin' };
     next();
   } catch (err) {
     console.error("Admin Auth Error:", err);
@@ -33,11 +26,11 @@ const authenticateAdmin = async (req, res, next) => {
 const authenticateUser = async (req, res, next) => {
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith('Bearer ')) return res.status(401).json({ message: 'Missing token' });
-  
+
   try {
     const token = auth.split(' ')[1];
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    
+
     // Allow Admins to safely use customer features (like Wishlist) without triggering a 401
     if (payload.role === 'admin') {
       req.user = payload;
@@ -60,8 +53,4 @@ const authenticateUser = async (req, res, next) => {
   }
 };
 
-// Fixed CommonJS Export (prevents undefined route crashes causing CORS errors)
-module.exports = {
-  authenticateAdmin,
-  authenticateUser
-};
+module.exports = { authenticateAdmin, authenticateUser };
