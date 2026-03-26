@@ -3,20 +3,17 @@ const pool = require("../config/db");
 const getProductSerials = async (productId) => {
   const [rows] = await pool.query(
     `SELECT 
-       sn.id,
-       sn.serial,
-       sn.is_used,
-       sn.created_at,
-       CASE 
-         WHEN wr.id IS NOT NULL THEN 'registered'
-         ELSE 'available'
-       END as status,
+       ps.id,
+       ps.serial_number as serial,
+       ps.serial_number,
+       ps.status,
+       ps.created_at,
        wr.user_name,
        wr.registered_at
-     FROM serial_numbers sn
-     LEFT JOIN warranty_registrations wr ON sn.id = wr.serial_number_id
-     WHERE sn.product_id = ?
-     ORDER BY sn.created_at DESC`,
+     FROM product_serials ps
+     LEFT JOIN warranty_registrations wr ON ps.serial_number = wr.registered_serial
+     WHERE ps.product_id = ?
+     ORDER BY ps.created_at DESC`,
     [productId]
   );
   return rows;
@@ -54,12 +51,12 @@ const addProductSerials = async (productId, serials) => {
   }
 
   const [existing] = await pool.query(
-    "SELECT serial FROM serial_numbers WHERE serial IN (?)",
+    "SELECT serial_number FROM product_serials WHERE serial_number IN (?)",
     [cleanedSerials]
   );
 
   if (existing.length > 0) {
-    const existingSerials = existing.map((row) => row.serial);
+    const existingSerials = existing.map((row) => row.serial_number);
     throw {
       status: 409,
       message: `Serial(s) already exist: ${existingSerials.join(", ")}`,
@@ -67,15 +64,16 @@ const addProductSerials = async (productId, serials) => {
     };
   }
 
-  const values = cleanedSerials.map((serial) => [productId, serial, 0]);
+  // Insert into the correct product_serials table with default 'available' status
+  const values = cleanedSerials.map((serial) => [productId, serial, 'available']);
   const [result] = await pool.query(
-    "INSERT INTO serial_numbers (product_id, serial, is_used) VALUES ?",
+    "INSERT INTO product_serials (product_id, serial_number, status) VALUES ?",
     [values]
   );
 
   await pool.query(
     `UPDATE products 
-     SET quantity = (SELECT COUNT(*) FROM serial_numbers WHERE product_id = ?) 
+     SET quantity = (SELECT COUNT(*) FROM product_serials WHERE product_id = ? AND status = 'available') 
      WHERE id = ?`,
     [productId, productId]
   );
@@ -89,10 +87,10 @@ const addProductSerials = async (productId, serials) => {
 
 const deleteProductSerial = async (productId, serialId) => {
   const [serial] = await pool.query(
-    `SELECT sn.id, sn.serial, sn.is_used, wr.id as warranty_id
-     FROM serial_numbers sn
-     LEFT JOIN warranty_registrations wr ON sn.id = wr.serial_number_id
-     WHERE sn.id = ? AND sn.product_id = ?`,
+    `SELECT ps.id, ps.serial_number, ps.status, wr.id as warranty_id
+     FROM product_serials ps
+     LEFT JOIN warranty_registrations wr ON ps.serial_number = wr.registered_serial
+     WHERE ps.id = ? AND ps.product_id = ?`,
     [serialId, productId]
   );
 
@@ -100,23 +98,23 @@ const deleteProductSerial = async (productId, serialId) => {
     throw { status: 404, message: "Serial number not found for this product" };
   }
 
-  if (serial[0].warranty_id) {
+  if (serial[0].warranty_id || serial[0].status === 'registered') {
     throw {
       status: 409,
-      message: `Cannot delete serial '${serial[0].serial}' - it has an active warranty registration`,
+      message: `Cannot delete serial '${serial[0].serial_number}' - it has an active warranty registration`,
     };
   }
 
-  await pool.query("DELETE FROM serial_numbers WHERE id = ?", [serialId]);
+  await pool.query("DELETE FROM product_serials WHERE id = ?", [serialId]);
 
   await pool.query(
     `UPDATE products 
-     SET quantity = (SELECT COUNT(*) FROM serial_numbers WHERE product_id = ?) 
+     SET quantity = (SELECT COUNT(*) FROM product_serials WHERE product_id = ? AND status = 'available') 
      WHERE id = ?`,
     [productId, productId]
   );
 
-  return { deleted: serial[0].serial };
+  return { deleted: serial[0].serial_number };
 };
 
 const updateProductSerial = async (productId, serialId, newSerial) => {
@@ -127,7 +125,7 @@ const updateProductSerial = async (productId, serialId, newSerial) => {
   }
 
   const [existing] = await pool.query(
-    `SELECT serial FROM serial_numbers WHERE id = ? AND product_id = ?`,
+    `SELECT serial_number FROM product_serials WHERE id = ? AND product_id = ?`,
     [serialId, productId]
   );
 
@@ -136,7 +134,7 @@ const updateProductSerial = async (productId, serialId, newSerial) => {
   }
 
   const [duplicate] = await pool.query(
-    "SELECT id FROM serial_numbers WHERE serial = ? AND id != ?",
+    "SELECT id FROM product_serials WHERE serial_number = ? AND id != ?",
     [cleanedSerial, serialId]
   );
 
@@ -144,14 +142,14 @@ const updateProductSerial = async (productId, serialId, newSerial) => {
     throw { status: 409, message: `Serial '${cleanedSerial}' already exists` };
   }
 
-  await pool.query("UPDATE serial_numbers SET serial = ? WHERE id = ?", [
+  await pool.query("UPDATE product_serials SET serial_number = ? WHERE id = ?", [
     cleanedSerial,
     serialId,
   ]);
 
   return {
     id: serialId,
-    oldSerial: existing[0].serial,
+    oldSerial: existing[0].serial_number,
     newSerial: cleanedSerial,
   };
 };
@@ -160,20 +158,20 @@ const checkSerialAvailability = async (serial) => {
   const cleanedSerial = serial.trim().toUpperCase();
   const [rows] = await pool.query(
     `SELECT 
-       sn.id,
-       sn.product_id,
+       ps.id,
+       ps.product_id,
        p.name as product_name,
-       sn.is_used,
+       ps.status,
        c.name as category_name
-     FROM serial_numbers sn
-     JOIN products p ON sn.product_id = p.id
+     FROM product_serials ps
+     JOIN products p ON ps.product_id = p.id
      JOIN categories c ON p.category_id = c.id
-     WHERE sn.serial = ?`,
+     WHERE ps.serial_number = ?`,
     [cleanedSerial]
   );
 
   return {
-    available: rows.length === 0,
+    available: rows.length > 0 && rows[0].status === 'available',
     exists: rows.length > 0,
     details: rows.length > 0 ? rows[0] : null,
   };
@@ -183,9 +181,9 @@ const getProductSerialStats = async (productId) => {
   const [stats] = await pool.query(
     `SELECT 
        COUNT(*) as total_serials,
-       SUM(CASE WHEN is_used = 1 THEN 1 ELSE 0 END) as used_serials,
-       SUM(CASE WHEN is_used = 0 THEN 1 ELSE 0 END) as available_serials
-     FROM serial_numbers 
+       SUM(CASE WHEN status = 'registered' THEN 1 ELSE 0 END) as used_serials,
+       SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available_serials
+     FROM product_serials 
      WHERE product_id = ?`,
     [productId]
   );
