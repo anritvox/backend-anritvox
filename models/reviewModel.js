@@ -1,4 +1,4 @@
-// backend/models/reviewModel.js
+// backend/models/reviewModel
 const pool = require('../config/db');
 
 const createReviewTable = async () => {
