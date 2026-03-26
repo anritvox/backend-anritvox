@@ -38,17 +38,25 @@ const allowedOrigins = [
   "https://anritvox.com",
 ];
 
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://anritvox-frontend.vercel.app",
+  "https://www.anritvox.com",
+  "https://anritvox.com",
+];
+
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
       callback(null, true);
     } else {
-      callback(new Error("Not allowed by CORS"));
+      callback(null, true); // Fallback bypass to prevent hard CORS drops from unknown proxies
     }
   },
   credentials: true,
 }));
 
+app.options('*', cors());
 app.use("/api/categories", categoryRoutes);
 app.use("/api/subcategories", subcategoryRoutes);
 app.use("/api/products", productRoutes);
