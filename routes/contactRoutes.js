@@ -2,7 +2,9 @@
 const express = require("express");
 const router = express.Router();
 const { getAllMessages, createMessage } = require("../models/contactModel");
-const authMiddleware = require("../middleware/authMiddleware");
+
+// FIX: Destructure the specific admin middleware function
+const { authenticateAdmin } = require("../middleware/authMiddleware");
 
 // POST /api/contact
 // Public: create a new message
@@ -24,7 +26,8 @@ router.post("/", async (req, res) => {
 
 // GET /api/contact
 // Admin: list all messages
-router.get("/", authMiddleware, async (req, res) => {
+// FIX: Use the destructured function here
+router.get("/", authenticateAdmin, async (req, res) => {
   try {
     const messages = await getAllMessages();
     res.json(messages);
