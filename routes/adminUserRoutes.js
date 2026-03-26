@@ -132,3 +132,63 @@ router.put('/orders/:id/status', authenticateAdmin, async (req, res) => {
 });
 
 module.exports = router;
+
+// Feature: GET /api/admin/orders/export/csv - Export orders as CSV
+router.get('/orders/export/csv', authenticateAdmin, async (req, res) => {
+  try {
+    const orders = await getAllOrders();
+    const headers = ['ID','Status','Total','Customer Email','Created'];
+    const rows = orders.map(o => [
+      o.id, o.status, o.total_amount || 0, o.email || '', o.created_at || ''
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="orders.csv"');
+    return res.send(csv);
+  } catch (err) {
+    return res.status(500).json({ message: 'Export failed' });
+  }
+});
+
+// Feature: GET /api/admin/dashboard - Dashboard summary stats
+router.get('/dashboard', authenticateAdmin, async (req, res) => {
+  try {
+    const pool = require('../config/db');
+    const [[{ totalOrders }]] = await pool.query('SELECT COUNT(*) as totalOrders FROM orders');
+    const [[{ totalRevenue }]] = await pool.query('SELECT COALESCE(SUM(total_amount), 0) as totalRevenue FROM orders WHERE status != "cancelled"');
+    const [[{ totalUsers }]] = await pool.query('SELECT COUNT(*) as totalUsers FROM users');
+    const [[{ totalProducts }]] = await pool.query('SELECT COUNT(*) as totalProducts FROM products WHERE status = "active"');
+    const [[{ pendingOrders }]] = await pool.query('SELECT COUNT(*) as pendingOrders FROM orders WHERE status = "pending"');
+    return res.json({ totalOrders, totalRevenue: parseFloat(totalRevenue), totalUsers, totalProducts, pendingOrders });
+  } catch (err) {
+    console.error('Dashboard stats error:', err);
+    return res.status(500).json({ message: 'Failed to load stats' });
+  }
+});
+
+// Feature: POST /api/admin/orders/bulk-status - Bulk update order status
+router.post('/orders/bulk-status', authenticateAdmin, async (req, res) => {
+  try {
+    const { orderIds, status } = req.body;
+    const validStatuses = ['pending','confirmed','packed','shipped','delivered','cancelled'];
+    if (!validStatuses.includes(status)) return res.status(400).json({ message: 'Invalid status' });
+    if (!Array.isArray(orderIds) || orderIds.length === 0) return res.status(400).json({ message: 'No order IDs provided' });
+    const pool = require('../config/db');
+    await pool.query('UPDATE orders SET status = ?, updated_at = NOW() WHERE id IN (?)', [status, orderIds]);
+    return res.json({ message: `${orderIds.length} orders updated to ${status}` });
+  } catch (err) {
+    return res.status(500).json({ message: 'Bulk update failed' });
+  }
+});
+
+// Feature: GET /api/admin/customers/segments - Customer segmentation
+router.get('/customers/segments', authenticateAdmin, async (req, res) => {
+  try {
+    const pool = require('../config/db');
+    const [vip] = await pool.query('SELECT u.id, u.name, u.email, COUNT(o.id) as order_count, SUM(o.total_amount) as total_spent FROM users u LEFT JOIN orders o ON u.id = o.user_id GROUP BY u.id HAVING order_count >= 5 ORDER BY total_spent DESC LIMIT 50');
+    const [newCustomers] = await pool.query('SELECT u.id, u.name, u.email, u.created_at FROM users u WHERE u.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) ORDER BY u.created_at DESC LIMIT 50');
+    return res.json({ vip, newCustomers });
+  } catch (err) {
+    return res.status(500).json({ message: 'Failed to load segments' });
+  }
+});
