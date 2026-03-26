@@ -1,4 +1,4 @@
-// backend/routes/notificationRoutes.js
+// backend/routes/notificationRoutes
 const express = require('express');
 const router = express.Router();
 const { authenticateUser, authenticateAdmin } = require('../middleware/authMiddleware');
