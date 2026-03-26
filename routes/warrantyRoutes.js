@@ -1,11 +1,12 @@
 const express = require("express");
 const router = express.Router();
-const { 
-  validateSerial, 
-  registerWarranty, 
-  getAllRegistrations, 
-  updateWarrantyStatus, 
-  deleteWarranty 
+const pool = require("../config/db");
+const {
+  validateSerial,
+  registerWarranty,
+  getAllRegistrations,
+  updateWarrantyStatus,
+  deleteWarranty
 } = require("../models/warrantyModel");
 const { authenticateAdmin } = require("../middleware/authMiddleware");
 
@@ -29,7 +30,7 @@ router.post("/register", async (req, res) => {
   }
 });
 
-// ADMIN: View all registrations
+// ADMIN: View all warranty registrations
 router.get("/admin", authenticateAdmin, async (req, res) => {
   try {
     const list = await getAllRegistrations();
@@ -39,7 +40,7 @@ router.get("/admin", authenticateAdmin, async (req, res) => {
   }
 });
 
-// ADMIN: Update warranty status (FIX FOR THE HTML PARSE ERROR)
+// ADMIN: Update warranty status
 router.put("/admin/:id", authenticateAdmin, async (req, res) => {
   try {
     await updateWarrantyStatus(req.params.id, req.body.status);
@@ -49,13 +50,49 @@ router.put("/admin/:id", authenticateAdmin, async (req, res) => {
   }
 });
 
-// ADMIN: Delete warranty (FIX FOR THE HTML PARSE ERROR)
+// ADMIN: Delete warranty registration
 router.delete("/admin/:id", authenticateAdmin, async (req, res) => {
   try {
     await deleteWarranty(req.params.id);
     res.json({ message: "Warranty deleted successfully" });
   } catch (err) {
     res.status(500).json({ message: "Server error deleting warranty" });
+  }
+});
+
+// ADMIN: Delete a serial number directly from warranty/serial management
+router.delete("/serials/:id", authenticateAdmin, async (req, res) => {
+  try {
+    const serialId = req.params.id;
+    // Get the serial info first to know the product_id for stock adjustment
+    const [rows] = await pool.query("SELECT product_id FROM product_serials WHERE id = ?", [serialId]);
+    if (rows.length === 0) return res.status(404).json({ message: "Serial not found" });
+    const productId = rows[0].product_id;
+    await pool.query("DELETE FROM product_serials WHERE id = ?", [serialId]);
+    // Adjust stock
+    await pool.query("UPDATE products SET stock = GREATEST(0, stock - 1) WHERE id = ?", [productId]);
+    res.json({ message: "Serial number deleted and inventory adjusted" });
+  } catch (err) {
+    console.error("Delete serial error:", err);
+    res.status(500).json({ message: "Server error deleting serial" });
+  }
+});
+
+// ADMIN: Get all serials with product info (for full serial management)
+router.get("/serials", authenticateAdmin, async (req, res) => {
+  try {
+    const [rows] = await pool.query(`
+      SELECT ps.id, ps.serial_number, ps.status, ps.product_id, ps.created_at,
+             p.name as product_name, p.sku
+      FROM product_serials ps
+      LEFT JOIN products p ON ps.product_id = p.id
+      ORDER BY ps.created_at DESC
+      LIMIT 500
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error("Get serials error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
