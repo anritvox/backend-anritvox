@@ -1,3 +1,4 @@
+//Coupon
 const pool = require('../config/db');
 
 const createCouponTable = async () => {
