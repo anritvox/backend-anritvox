@@ -1,5 +1,4 @@
-*/Serial Model
-  const pool = require("../config/db");
+const pool = require("../config/db");
 
 const getProductSerials = async (productId) => {
   const [rows] = await pool.query(
