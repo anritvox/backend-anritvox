@@ -21,6 +21,7 @@ const initWarrantyTable = async () => {
     try { await pool.query(`ALTER TABLE ${table} ADD COLUMN ${sql}`); } catch (e) {}
   };
 
+  await addCol('warranty_registrations', 'serial_number_id INT AFTER registered_serial');
   await addCol('warranty_registrations', 'user_name VARCHAR(255) AFTER product_id');
   await addCol('warranty_registrations', 'user_email VARCHAR(255) AFTER user_name');
   await addCol('warranty_registrations', 'user_phone VARCHAR(50) AFTER user_email');
@@ -81,11 +82,13 @@ const registerWarranty = async (data) => {
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    
+    // Injecting serial_number_id (rec.serial_id) directly into the DB to fix the default value error
     const [result] = await conn.query(
       `INSERT INTO warranty_registrations 
-        (registered_serial, product_id, user_name, user_email, user_phone, purchase_date, invoice_number, status) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'accepted')`,
-      [rec.serial_number, productId, customerName || null, email || null, phone || null, purchaseDate || null, invoiceNumber || null]
+        (registered_serial, serial_number_id, product_id, user_name, user_email, user_phone, purchase_date, invoice_number, status) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'accepted')`,
+      [rec.serial_number, rec.serial_id, productId, customerName || null, email || null, phone || null, purchaseDate || null, invoiceNumber || null]
     );
     await conn.query(`UPDATE product_serials SET status = 'registered' WHERE serial_number = ?`, [rec.serial_number]);
     await conn.commit();
