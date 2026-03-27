@@ -1,4 +1,4 @@
-// backend/routes/reviewRoutes
+// backend/routes/reviewRoutes.js
 const express = require('express');
 const router = express.Router();
 const { authenticateUser, authenticateAdmin } = require('../middleware/authMiddleware');
@@ -33,10 +33,14 @@ router.get('/my', authenticateUser, async (req, res) => {
 // POST /api/reviews - user: submit review
 router.post('/', authenticateUser, async (req, res) => {
   try {
-    const { product_id, order_id, rating, title, body } = req.body;
+    // FIXED: Accept both 'comment' and 'body' to bridge the frontend payload to the DB schema
+    const { product_id, order_id, rating, title, body, comment } = req.body;
+    const reviewText = body || comment; 
+
     if (!product_id || !rating) return res.status(400).json({ message: 'product_id and rating are required' });
     if (rating < 1 || rating > 5) return res.status(400).json({ message: 'Rating must be between 1 and 5' });
-    const id = await createReview({ product_id, user_id: req.user.id, order_id, rating, title, body });
+    
+    const id = await createReview({ product_id, user_id: req.user.id, order_id, rating, title, body: reviewText });
     res.status(201).json({ message: 'Review submitted and pending approval', id });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ message: 'You already reviewed this product for this order' });
