@@ -112,5 +112,29 @@ router.get('/revenue', authenticateAdmin, async (req, res) => {
     res.status(500).json({ message: 'Failed to get revenue data' });
   }
 });
-
+// FIXED: Handle frontend requests asking for base analytics without the /revenue path
+router.get('/', authenticateAdmin, async (req, res) => {
+  try {
+    const period = req.query.period || 'daily';
+    let groupBy, interval;
+    
+    if (period === 'monthly') { groupBy = "DATE_FORMAT(created_at, '%Y-%m')"; interval = '12 MONTH'; }
+    else if (period === 'weekly') { groupBy = "YEARWEEK(created_at)"; interval = '12 WEEK'; }
+    else { groupBy = "DATE(created_at)"; interval = '30 DAY'; }
+    
+    const [rows] = await pool.query(`
+      SELECT ${groupBy} as period,
+        COUNT(*) as orders,
+        SUM(CASE WHEN status != 'cancelled' THEN total_price ELSE 0 END) as revenue
+      FROM orders
+      WHERE created_at >= DATE_SUB(NOW(), INTERVAL ${interval})
+      GROUP BY ${groupBy}
+      ORDER BY period ASC
+    `);
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to get revenue data' });
+  }
+});
 module.exports = router;
