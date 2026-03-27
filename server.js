@@ -81,7 +81,48 @@ async function initDB() {
     console.error("DB init error:", err.message);
   }
 }
+// --- GLOBAL STABILIZATION PROTOCOL (Place right before app.listen) ---
 
+// 1. 405 Method Not Allowed Handler for existing prefixes
+app.use('/api', (req, res, next) => {
+    res.status(405).json({
+        success: false,
+        error: "Method Not Allowed",
+        message: `The ${req.method} method is not supported for ${req.originalUrl}`
+    });
+});
+
+// 2. 404 Route Not Found Catch-All
+app.use((req, res, next) => {
+    res.status(404).json({ success: false, message: "API Endpoint Not Found" });
+});
+
+// 3. Global 500 Internal Server Error & Deadlock Handler
+app.use((err, req, res, next) => {
+    console.error(`[CRITICAL] ${err.name}: ${err.message}`);
+    console.error(err.stack);
+
+    // Handle MySQL Deadlocks safely
+    if (err.code === 'ER_LOCK_DEADLOCK') {
+        return res.status(409).json({ 
+            success: false, 
+            message: "High traffic detected. Please try your checkout again." 
+        });
+    }
+
+    // Handle JWT Malformations
+    if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
+        return res.status(401).json({ success: false, message: "Session invalid or expired" });
+    }
+
+    res.status(err.status || 500).json({
+        success: false,
+        message: "Internal Server Error. Our team has been notified.",
+        // Only expose actual error in dev, hide in production for security
+        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+});
+// ---------------------------------------------------------------------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
