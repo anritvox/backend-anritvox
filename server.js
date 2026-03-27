@@ -32,11 +32,24 @@ const app = express();
 app.use(express.json({ limit: '10mb' }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Bulletproof CORS Configuration
-// Always resolving true prevents Express from dropping preflight OPTIONS on backend crashes
+// Bulletproof & Secure CORS Configuration
+const allowedOrigins = [
+  "https://www.anritvox.com",
+  "https://anritvox.com",
+  "http://localhost:5173", // Vite default dev port
+  "http://localhost:3000"
+];
+
 const corsOptions = {
   origin: function (origin, callback) {
-    callback(null, true);
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS restrictions'));
+    }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -81,7 +94,8 @@ async function initDB() {
     console.error("DB init error:", err.message);
   }
 }
-// --- GLOBAL STABILIZATION PROTOCOL (Place right before app.listen) ---
+
+// --- GLOBAL STABILIZATION PROTOCOL ---
 
 // 1. 405 Method Not Allowed Handler for existing prefixes
 app.use('/api', (req, res, next) => {
@@ -99,8 +113,11 @@ app.use((req, res, next) => {
 
 // 3. Global 500 Internal Server Error & Deadlock Handler
 app.use((err, req, res, next) => {
-    console.error(`[CRITICAL] ${err.name}: ${err.message}`);
-    console.error(err.stack);
+    // Suppress CORS errors from logging massively as crashes
+    if (err.message !== 'Not allowed by CORS restrictions') {
+      console.error(`[CRITICAL] ${err.name}: ${err.message}`);
+      console.error(err.stack);
+    }
 
     // Handle MySQL Deadlocks safely
     if (err.code === 'ER_LOCK_DEADLOCK') {
@@ -118,11 +135,10 @@ app.use((err, req, res, next) => {
     res.status(err.status || 500).json({
         success: false,
         message: "Internal Server Error. Our team has been notified.",
-        // Only expose actual error in dev, hide in production for security
         error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
 });
-// ---------------------------------------------------------------------
+
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
