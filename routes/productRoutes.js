@@ -166,9 +166,38 @@ router.post('/', authenticateAdmin, upload.array('images', 10), async (req, res)
 });
 
 // PUT /api/products/:id  - update product (admin)
+// PUT /api/products/:id  - update product (admin)
 router.put('/:id', authenticateAdmin, upload.array('images', 10), async (req, res) => {
   try {
     const productId = req.params.id;
+    const pool = require('../config/db');
+
+    // --- FIXED: IMAGE DELETION ENGINE ---
+    let retainedImages = [];
+    try {
+      if (req.body.existing_images) {
+        retainedImages = JSON.parse(req.body.existing_images);
+      }
+    } catch (e) {
+      console.error("Failed to parse existing_images");
+    }
+
+    // Extract the raw AWS S3 / local keys from the full URLs
+    const retainedKeys = retainedImages.map(url => {
+      try { return new URL(url).pathname.slice(1); } catch { return url; }
+    });
+
+    // Fetch current database images
+    const [currentImgs] = await pool.query('SELECT file_path FROM product_images WHERE product_id = ?', [productId]);
+    const currentPaths = currentImgs.map(i => i.file_path);
+    
+    // Cross-reference and delete missing images from DB and Storage
+    const toDelete = currentPaths.filter(p => !retainedKeys.includes(p));
+    for (const p of toDelete) {
+      await deleteProductImage(productId, p);
+    }
+    // ------------------------------------
+
     let serials = [];
     if (req.body.serials) {
       try { serials = JSON.parse(req.body.serials); } catch {
@@ -181,6 +210,7 @@ router.put('/:id', authenticateAdmin, upload.array('images', 10), async (req, re
       if (dupes.length) return res.status(400).json({ error: `Duplicate serial(s): ${[...new Set(dupes)].join(', ')}.` });
       req.body.serials = cleaned;
     }
+    
     const { name, slug, sku, brand, description, price, discount_price, category_id, subcategory_id, meta_title, meta_description, tags } = req.body;
     await updateProduct(productId, {
       name, slug, sku, brand, description, price,
@@ -188,6 +218,8 @@ router.put('/:id', authenticateAdmin, upload.array('images', 10), async (req, re
       category_id, subcategory_id: subcategory_id || null,
       meta_title, meta_description, tags,
     });
+    
+    // Add new uploads
     for (const file of req.files) { await addProductImage(productId, file.key); }
     return res.json({ id: productId });
   } catch (err) {
