@@ -16,7 +16,14 @@ const initWarrantyTable = async () => {
     )
   `);
 
-  // 2. Safely patch missing columns (Fixes the ER_BAD_FIELD_ERROR crash)
+  // 2. Drop the rogue foreign key constraint that references the wrong table
+  try {
+    await pool.query(`ALTER TABLE warranty_registrations DROP FOREIGN KEY fk_warranty_serial`);
+  } catch (e) {
+    // Silently ignore if it has already been dropped to prevent crashes
+  }
+
+  // 3. Safely patch missing columns
   const addCol = async (table, sql) => {
     try { await pool.query(`ALTER TABLE ${table} ADD COLUMN ${sql}`); } catch (e) {}
   };
@@ -60,7 +67,7 @@ const validateSerial = async (serial) => {
 };
 
 const registerWarranty = async (data) => {
-  // Ensure table and all new columns exist before inserting
+  // Ensure table, columns, and constraints are resolved before inserting
   await initWarrantyTable(); 
 
   const { serialNumber, serial, productId, customerName, email, phone, purchaseDate, invoiceNumber } = data;
@@ -83,7 +90,7 @@ const registerWarranty = async (data) => {
   try {
     await conn.beginTransaction();
     
-    // Injecting serial_number_id (rec.serial_id) directly into the DB to fix the default value error
+    // Injecting serial_number_id (rec.serial_id) directly into the DB 
     const [result] = await conn.query(
       `INSERT INTO warranty_registrations 
         (registered_serial, serial_number_id, product_id, user_name, user_email, user_phone, purchase_date, invoice_number, status) 
