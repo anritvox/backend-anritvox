@@ -176,19 +176,20 @@ const createProduct = async (data) => {
 const updateProduct = async (id, data) => {
   const {
     name, slug, sku, brand, description,
-    price, discount_price, quantity,
+    price, discount_price, 
     category_id, subcategory_id,
     meta_title, meta_description, tags,
   } = data;
+  
   await pool.query(
     `UPDATE products SET
      name=?, slug=?, sku=?, brand=?, description=?,
-     price=?, discount_price=?, quantity=?,
+     price=?, discount_price=?, 
      category_id=?, subcategory_id=?,
      meta_title=?, meta_description=?, tags=?
      WHERE id=?`,
     [name, slug || null, sku || null, brand || null, description || null,
-     price, discount_price || null, quantity,
+     price, discount_price || null, 
      category_id, subcategory_id || null,
      meta_title || null, meta_description || null, tags || null, id]
   );
