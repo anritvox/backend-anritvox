@@ -20,57 +20,49 @@ const getProductSerials = async (productId) => {
 };
 
 const addProductSerials = async (productId, serials) => {
-  const [product] = await pool.query(
-    "SELECT id, name FROM products WHERE id = ?",
-    [productId]
-  );
-  if (product.length === 0) {
-    throw { status: 404, message: "Product not found" };
-  }
+  const [product] = await pool.query("SELECT id, name FROM products WHERE id = ?", [productId]);
+  if (product.length === 0) throw { status: 404, message: "Product not found" };
 
   const cleanedSerials = serials.map((s) => s.trim().toUpperCase());
+  
+  // Adjusted Regex to allow dashes (-) for the new advanced format
   const invalidSerials = cleanedSerials.filter((s) => !/^[A-Z0-9-]+$/.test(s));
-
   if (invalidSerials.length > 0) {
-    throw {
-      status: 400,
-      message: `Invalid serial format: ${invalidSerials.join(", ")}`,
-    };
+    throw { status: 400, message: `Invalid serial format detected. Example: ${invalidSerials[0]}` };
   }
 
-  const duplicatesInBatch = cleanedSerials.filter(
-    (s, i) => cleanedSerials.indexOf(s) !== i
-  );
+  // Double check in-memory duplicates (Generator now fixes this automatically, but good security)
+  const duplicatesInBatch = cleanedSerials.filter((s, i) => cleanedSerials.indexOf(s) !== i);
   if (duplicatesInBatch.length > 0) {
-    const uniqueDuplicates = [...new Set(duplicatesInBatch)];
-    throw {
-      status: 400,
-      message: `Duplicate serials in batch: ${uniqueDuplicates.join(", ")}`,
-      duplicates: uniqueDuplicates,
-    };
+    throw { status: 400, message: `Duplicate serials found in submission batch.`, duplicates: [...new Set(duplicatesInBatch)] };
   }
 
+  // DB Collision Check
   const [existing] = await pool.query(
     "SELECT serial_number FROM product_serials WHERE serial_number IN (?)",
     [cleanedSerials]
   );
-
   if (existing.length > 0) {
     const existingSerials = existing.map((row) => row.serial_number);
-    throw {
-      status: 409,
-      message: `Serial(s) already exist: ${existingSerials.join(", ")}`,
-      duplicates: existingSerials,
-    };
+    throw { status: 409, message: `Serial(s) already exist in database.`, duplicates: existingSerials };
   }
 
-  // Insert into the correct product_serials table with default 'available' status
-  const values = cleanedSerials.map((serial) => [productId, serial, 'available']);
-  const [result] = await pool.query(
-    "INSERT INTO product_serials (product_id, serial_number, status) VALUES ?",
-    [values]
-  );
+  // Feature 6: Chunked Database Inserts to support 10k+ generation
+  const chunkSize = 1000;
+  let firstInsertId = null;
 
+  for (let i = 0; i < cleanedSerials.length; i += chunkSize) {
+    const chunk = cleanedSerials.slice(i, i + chunkSize);
+    const values = chunk.map((serial) => [productId, serial, 'available']);
+    
+    const [result] = await pool.query(
+      "INSERT INTO product_serials (product_id, serial_number, status) VALUES ?",
+      [values]
+    );
+    if (i === 0) firstInsertId = result.insertId;
+  }
+
+  // Safely update product quantity
   await pool.query(
     `UPDATE products 
      SET quantity = (SELECT COUNT(*) FROM product_serials WHERE product_id = ? AND status = 'available') 
@@ -78,11 +70,7 @@ const addProductSerials = async (productId, serials) => {
     [productId, productId]
   );
 
-  return {
-    added: cleanedSerials.length,
-    serials: cleanedSerials,
-    insertId: result.insertId,
-  };
+  return { added: cleanedSerials.length, serials: cleanedSerials, insertId: firstInsertId };
 };
 
 const deleteProductSerial = async (productId, serialId) => {
@@ -94,23 +82,14 @@ const deleteProductSerial = async (productId, serialId) => {
     [serialId, productId]
   );
 
-  if (serial.length === 0) {
-    throw { status: 404, message: "Serial number not found for this product" };
-  }
-
+  if (serial.length === 0) throw { status: 404, message: "Serial number not found for this product" };
   if (serial[0].warranty_id || serial[0].status === 'registered') {
-    throw {
-      status: 409,
-      message: `Cannot delete serial '${serial[0].serial_number}' - it has an active warranty registration`,
-    };
+    throw { status: 409, message: `Cannot delete serial '${serial[0].serial_number}' - it has an active warranty registration` };
   }
 
   await pool.query("DELETE FROM product_serials WHERE id = ?", [serialId]);
-
   await pool.query(
-    `UPDATE products 
-     SET quantity = (SELECT COUNT(*) FROM product_serials WHERE product_id = ? AND status = 'available') 
-     WHERE id = ?`,
+    `UPDATE products SET quantity = (SELECT COUNT(*) FROM product_serials WHERE product_id = ? AND status = 'available') WHERE id = ?`,
     [productId, productId]
   );
 
@@ -119,50 +98,23 @@ const deleteProductSerial = async (productId, serialId) => {
 
 const updateProductSerial = async (productId, serialId, newSerial) => {
   const cleanedSerial = newSerial.trim().toUpperCase();
+  if (!/^[A-Z0-9-]+$/.test(cleanedSerial)) throw { status: 400, message: "Invalid serial number format" };
 
-  if (!/^[A-Z0-9-]+$/.test(cleanedSerial)) {
-    throw { status: 400, message: "Invalid serial number format" };
-  }
+  const [existing] = await pool.query(`SELECT serial_number FROM product_serials WHERE id = ? AND product_id = ?`, [serialId, productId]);
+  if (existing.length === 0) throw { status: 404, message: "Serial number not found for this product" };
 
-  const [existing] = await pool.query(
-    `SELECT serial_number FROM product_serials WHERE id = ? AND product_id = ?`,
-    [serialId, productId]
-  );
+  const [duplicate] = await pool.query("SELECT id FROM product_serials WHERE serial_number = ? AND id != ?", [cleanedSerial, serialId]);
+  if (duplicate.length > 0) throw { status: 409, message: `Serial '${cleanedSerial}' already exists` };
 
-  if (existing.length === 0) {
-    throw { status: 404, message: "Serial number not found for this product" };
-  }
-
-  const [duplicate] = await pool.query(
-    "SELECT id FROM product_serials WHERE serial_number = ? AND id != ?",
-    [cleanedSerial, serialId]
-  );
-
-  if (duplicate.length > 0) {
-    throw { status: 409, message: `Serial '${cleanedSerial}' already exists` };
-  }
-
-  await pool.query("UPDATE product_serials SET serial_number = ? WHERE id = ?", [
-    cleanedSerial,
-    serialId,
-  ]);
-
-  return {
-    id: serialId,
-    oldSerial: existing[0].serial_number,
-    newSerial: cleanedSerial,
-  };
+  await pool.query("UPDATE product_serials SET serial_number = ? WHERE id = ?", [cleanedSerial, serialId]);
+  return { id: serialId, oldSerial: existing[0].serial_number, newSerial: cleanedSerial };
 };
 
 const checkSerialAvailability = async (serial) => {
   const cleanedSerial = serial.trim().toUpperCase();
   const [rows] = await pool.query(
     `SELECT 
-       ps.id,
-       ps.product_id,
-       p.name as product_name,
-       ps.status,
-       c.name as category_name
+       ps.id, ps.product_id, p.name as product_name, ps.status, c.name as category_name
      FROM product_serials ps
      JOIN products p ON ps.product_id = p.id
      JOIN categories c ON p.category_id = c.id
