@@ -25,19 +25,16 @@ const addProductSerials = async (productId, serials) => {
 
   const cleanedSerials = serials.map((s) => s.trim().toUpperCase());
   
-  // Adjusted Regex to allow dashes (-) for the new advanced format
   const invalidSerials = cleanedSerials.filter((s) => !/^[A-Z0-9-]+$/.test(s));
   if (invalidSerials.length > 0) {
     throw { status: 400, message: `Invalid serial format detected. Example: ${invalidSerials[0]}` };
   }
 
-  // Double check in-memory duplicates (Generator now fixes this automatically, but good security)
   const duplicatesInBatch = cleanedSerials.filter((s, i) => cleanedSerials.indexOf(s) !== i);
   if (duplicatesInBatch.length > 0) {
     throw { status: 400, message: `Duplicate serials found in submission batch.`, duplicates: [...new Set(duplicatesInBatch)] };
   }
 
-  // DB Collision Check
   const [existing] = await pool.query(
     "SELECT serial_number FROM product_serials WHERE serial_number IN (?)",
     [cleanedSerials]
@@ -47,7 +44,6 @@ const addProductSerials = async (productId, serials) => {
     throw { status: 409, message: `Serial(s) already exist in database.`, duplicates: existingSerials };
   }
 
-  // Feature 6: Chunked Database Inserts to support 10k+ generation
   const chunkSize = 1000;
   let firstInsertId = null;
 
@@ -62,7 +58,6 @@ const addProductSerials = async (productId, serials) => {
     if (i === 0) firstInsertId = result.insertId;
   }
 
-  // Safely update product quantity
   await pool.query(
     `UPDATE products 
      SET quantity = (SELECT COUNT(*) FROM product_serials WHERE product_id = ? AND status = 'available') 
