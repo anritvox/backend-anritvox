@@ -41,52 +41,44 @@ router.post("/generate", authenticateAdmin, async (req, res) => {
       return res.status(400).json({ message: "Product ID and a valid Count are required" });
     }
 
-    const generatedSerials = new Set(); // Feature 2: Set guarantees no in-memory duplicates
+    const generatedSerials = new Set(); 
 
-    // Feature 5: Loop until we have EXACTLY the requested count
     while (generatedSerials.size < count) {
       let newSerial = "";
 
       if (format === "legacy") {
-        // LEGACY FORMAT: Exactly 6 char prefix + 4 char random suffix (10 digits)
         const customString = prefix ? prefix.toUpperCase() : "CUSTOM";
         if (customString.length !== 6) {
           return res.status(400).json({ message: "Model Prefix must be exactly 6 characters for legacy format (e.g., AV2316)" });
         }
-        // Feature 1: Crypto Randomness
         const randomPart = crypto.randomBytes(3).toString("hex").toUpperCase().slice(0, 4);
         newSerial = `${customString}${randomPart}`;
         
       } else {
-        // ADVANCED FORMAT: PREFIX-YYMM-XXXXXX-C (e.g., ANRI-2603-A3B7K9-F)
         const pfx = prefix ? prefix.toUpperCase().slice(0, 4).padEnd(4, 'X') : "ANRI";
         const date = new Date();
         const yy = String(date.getFullYear()).slice(-2);
-        const mm = String(date.getMonth() + 1).padStart(2, '0'); // Feature 3: Temporal Tracking
+        const mm = String(date.getMonth() + 1).padStart(2, '0');
         
         const randomPart = crypto.randomBytes(4).toString("hex").toUpperCase().slice(0, 6);
         const baseSerial = `${pfx}-${yy}${mm}-${randomPart}`;
         
-        const checksum = generateChecksum(baseSerial); // Feature 4: Algorithmic Checksum
+        const checksum = generateChecksum(baseSerial); 
         newSerial = `${baseSerial}-${checksum}`;
       }
 
-      generatedSerials.add(newSerial); // Set will naturally reject duplicates without crashing
+      generatedSerials.add(newSerial); 
     }
 
     const serialArray = Array.from(generatedSerials);
-
-    // Insert serials using the enhanced model
     const result = await addProductSerials(productId, serialArray);
-
-    // Fetch the safely updated quantity
     const [[product]] = await pool.query("SELECT quantity FROM products WHERE id = ?", [productId]);
 
     res.status(201).json({
       message: `${count} Serials generated in ${format} format.`,
       formatUsed: format,
       count: result.added,
-      serialsPreview: serialArray.slice(0, 10), // Show max 10 in response to save bandwidth
+      serialsPreview: serialArray.slice(0, 10), 
       totalGenerated: result.added,
       newStock: product ? product.quantity : null,
     });
@@ -153,12 +145,11 @@ router.post("/check", async (req, res) => {
   }
 });
 
-// NEW POST /api/serials/validate-checksum (Frontend instant verify)
+// POST /api/serials/validate-checksum (Frontend instant verify)
 router.post("/validate-checksum", async (req, res) => {
   const { serial } = req.body;
   if (!serial) return res.status(400).json({ valid: false });
   
-  // Legacy format bypass (if no dashes, treat as valid structurally)
   if (!serial.includes("-")) return res.json({ valid: true, isLegacy: true });
 
   const parts = serial.split('-');
