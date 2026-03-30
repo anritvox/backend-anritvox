@@ -16,10 +16,6 @@ const { getAddressesByUser } = require("../models/addressModel");
 
 // ─── ADMIN ROUTES ─────────────────────────────────────────────
 
-/**
- * PUT /api/admin/orders/:id/status
- * Update Order Status, Tracking, and Dispatch Email
- */
 router.put("/:id/status", authenticateAdmin, async (req, res) => {
   const connection = await pool.getConnection();
   try {
@@ -67,11 +63,6 @@ router.put("/:id/status", authenticateAdmin, async (req, res) => {
   }
 });
 
-// ─── CUSTOMER ROUTES ───────────────────────────────────────────
-
-/**
- * POST /api/orders - Place order from cart
- */
 router.post("/", authenticateUser, async (req, res) => {
   try {
     const { addressId, deliveryType, paymentMode, couponCode, notes } = req.body;
@@ -146,9 +137,6 @@ router.get("/", authenticateUser, async (req, res) => {
   }
 });
 
-/**
- * GET /api/orders/:id - Single order detail
- */
 router.get("/:id", authenticateUser, async (req, res) => {
   try {
     const order = await getOrderById(req.params.id);
@@ -160,9 +148,6 @@ router.get("/:id", authenticateUser, async (req, res) => {
   }
 });
 
-/**
- * POST /api/orders/:id/cancel - Customer cancel
- */
 router.post("/:id/cancel", authenticateUser, async (req, res) => {
   try {
     const order = await getOrderById(req.params.id);
@@ -181,9 +166,6 @@ router.post("/:id/cancel", authenticateUser, async (req, res) => {
   }
 });
 
-/**
- * POST /api/orders/:id/return - Customer return request
- */
 router.post("/:id/return", authenticateUser, async (req, res) => {
   try {
     const order = await getOrderById(req.params.id);
