@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const crypto = require("crypto");
+const excel = require("exceljs");
 const pool = require("../config/db");
 const { authenticateAdmin } = require("../middleware/authMiddleware");
 
@@ -13,12 +14,9 @@ const {
   checkSerialAvailability,
 } = require("../models/serialModel");
 
-// Helper function to generate a checksum character
 const generateChecksum = (baseString) => {
   let sum = 0;
-  for (let i = 0; i < baseString.length; i++) {
-    sum += baseString.charCodeAt(i);
-  }
+  for (let i = 0; i < baseString.length; i++) sum += baseString.charCodeAt(i);
   return sum.toString(36).toUpperCase().slice(-1);
 };
 
@@ -32,11 +30,62 @@ router.get("/:productId", async (req, res) => {
   }
 });
 
+// GET /api/serials/export/excel - Native Excel Export
+router.get("/export/excel", authenticateAdmin, async (req, res) => {
+  try {
+    const { productId, status } = req.query;
+    
+    let query = `
+      SELECT ps.serial_number, ps.status, ps.created_at, p.name as product_name
+      FROM product_serials ps
+      JOIN products p ON ps.product_id = p.id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (productId) {
+      query += ` AND ps.product_id = ?`;
+      params.push(productId);
+    }
+    if (status) {
+      query += ` AND ps.status = ?`;
+      params.push(status);
+    }
+    
+    query += ` ORDER BY ps.created_at DESC`;
+    const [serials] = await pool.query(query, params);
+
+    const workbook = new excel.Workbook();
+    const worksheet = workbook.addWorksheet("Serials Inventory");
+
+    worksheet.columns = [
+      { header: "Serial Number", key: "serial_number", width: 30 },
+      { header: "Product Name", key: "product_name", width: 40 },
+      { header: "Status", key: "status", width: 15 },
+      { header: "Created At", key: "created_at", width: 25 }
+    ];
+
+    // Style the header row for visual clarity
+    worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } };
+
+    worksheet.addRows(serials);
+
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    res.setHeader("Content-Disposition", `attachment; filename=Anritvox_Serials_${new Date().getTime()}.xlsx`);
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error("Export generation failed:", err);
+    res.status(500).json({ success: false, message: "Failed to generate Excel file." });
+  }
+});
+
 // POST /api/serials/generate - Advanced Pro Generator
 router.post("/generate", authenticateAdmin, async (req, res) => {
   try {
     const { productId, count, prefix, format = "advanced" } = req.body;
-    
     if (!productId || !count || count <= 0) {
       return res.status(400).json({ message: "Product ID and a valid Count are required" });
     }
@@ -49,24 +98,20 @@ router.post("/generate", authenticateAdmin, async (req, res) => {
       if (format === "legacy") {
         const customString = prefix ? prefix.toUpperCase() : "CUSTOM";
         if (customString.length !== 6) {
-          return res.status(400).json({ message: "Model Prefix must be exactly 6 characters for legacy format (e.g., AV2316)" });
+          return res.status(400).json({ message: "Model Prefix must be exactly 6 characters for legacy format" });
         }
         const randomPart = crypto.randomBytes(3).toString("hex").toUpperCase().slice(0, 4);
         newSerial = `${customString}${randomPart}`;
-        
       } else {
         const pfx = prefix ? prefix.toUpperCase().slice(0, 4).padEnd(4, 'X') : "ANRI";
         const date = new Date();
         const yy = String(date.getFullYear()).slice(-2);
         const mm = String(date.getMonth() + 1).padStart(2, '0');
-        
         const randomPart = crypto.randomBytes(4).toString("hex").toUpperCase().slice(0, 6);
         const baseSerial = `${pfx}-${yy}${mm}-${randomPart}`;
-        
         const checksum = generateChecksum(baseSerial); 
         newSerial = `${baseSerial}-${checksum}`;
       }
-
       generatedSerials.add(newSerial); 
     }
 
