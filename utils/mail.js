@@ -1,11 +1,11 @@
 // utils/mail.js
-// Robust Mailjet mailer: SDK-first, HTTPS fallback.
-// Usage: sendMail({ to, subject, html, text, from, attachments, cc, bcc })
+// Robust Mailjet mailer: SDK-first, HTTPS fallback with Order Status Templates.
+// Usage: sendMail({ to, subject, html, text }) or sendOrderStatusEmail(...)
 
 const https = require("https");
 const util = require("util");
 
-// Environment keys (support several common names)
+// Environment keys
 const MJ_PUBLIC =
   process.env.MAILJET_API_KEY ||
   process.env.MJ_APIKEY_PUBLIC ||
@@ -15,79 +15,30 @@ const MJ_PRIVATE =
   process.env.MJ_APIKEY_PRIVATE ||
   process.env.MAILJET_PRIVATE;
 const EMAIL_FROM = process.env.EMAIL_FROM || "no-reply@yourdomain.com";
-const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || "Anritvox";
+const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || "ANRITVOX Logistics";
 
 if (!MJ_PUBLIC || !MJ_PRIVATE) {
   console.warn(
-    "⚠️ MAILJET API keys not set (MAILJET_API_KEY / MAILJET_API_SECRET). Set them in env for sending email."
+    "⚠️ MAILJET API keys not set. Email functionality will be disabled or fail."
   );
 }
 
-/* ---------- Attempt to initialize SDK client (if available) ---------- */
+/* ---------- Mailjet SDK Initialization ---------- */
 let mailjetClient = null;
-let sdkInitError = null;
-
 try {
   const mj = require("node-mailjet");
-  // Try several documented/observed initialization patterns
-  try {
-    if (typeof mj === "function") {
-      // v6 factory style: mj({ apiKey, apiSecret }) -> client
-      try {
-        const client = mj({ apiKey: MJ_PUBLIC, apiSecret: MJ_PRIVATE });
-        if (client && typeof client.post === "function") mailjetClient = client;
-      } catch (e) {
-        // try alternative factory shapes
-      }
-    }
-
-    if (!mailjetClient && mj && typeof mj.apiConnect === "function") {
-      try {
-        mailjetClient = mj.apiConnect(MJ_PUBLIC, MJ_PRIVATE);
-      } catch (e) {
-        // continue
-      }
-    }
-
-    if (!mailjetClient && mj && typeof mj.connect === "function") {
-      try {
-        mailjetClient = mj.connect(MJ_PUBLIC, MJ_PRIVATE);
-      } catch (e) {
-        // continue
-      }
-    }
-
-    if (!mailjetClient && mj && typeof mj.post === "function") {
-      // module exported an already-initialized client
-      mailjetClient = mj;
-    }
-
-    if (!mailjetClient && mj && typeof mj.Client === "function") {
-      try {
-        mailjetClient = new mj.Client({
-          apiKey: MJ_PUBLIC,
-          apiSecret: MJ_PRIVATE,
-        });
-      } catch (e) {}
-    }
-  } catch (e) {
-    sdkInitError = e;
+  if (typeof mj === "function") {
+    mailjetClient = mj({ apiKey: MJ_PUBLIC, apiSecret: MJ_PRIVATE });
+  } else if (mj && typeof mj.apiConnect === "function") {
+    mailjetClient = mj.apiConnect(MJ_PUBLIC, MJ_PRIVATE);
+  } else if (mj && typeof mj.connect === "function") {
+    mailjetClient = mj.connect(MJ_PUBLIC, MJ_PRIVATE);
   }
 } catch (e) {
-  // require failed (no SDK installed)
-  sdkInitError = e;
+  console.warn("⚠️ Mailjet SDK not found; falling back to direct HTTPS calls.");
 }
 
-if (mailjetClient && typeof mailjetClient.post === "function") {
-  console.log("✅ Mailjet SDK initialized for sending emails.");
-} else {
-  console.warn(
-    "⚠️ Mailjet SDK not usable; will fall back to direct HTTPS calls. SDK init error:",
-    sdkInitError && sdkInitError.message ? sdkInitError.message : sdkInitError
-  );
-}
-
-/* ---------- Helpers ---------- */
+/* ---------- Internal Helpers ---------- */
 
 function normalizeRecipient(recipient) {
   if (!recipient) return [];
@@ -123,13 +74,10 @@ function normalizeAttachments(attachments) {
   });
 }
 
-/* ---------- HTTPS (fallback) sender ---------- */
-
 function httpSendMail(payload) {
   return new Promise((resolve, reject) => {
     const auth = Buffer.from(`${MJ_PUBLIC}:${MJ_PRIVATE}`).toString("base64");
     const data = JSON.stringify(payload);
-
     const options = {
       hostname: "api.mailjet.com",
       path: "/v3.1/send",
@@ -140,47 +88,30 @@ function httpSendMail(payload) {
         "Content-Length": Buffer.byteLength(data),
       },
     };
-
     const req = https.request(options, (res) => {
       let body = "";
       res.on("data", (chunk) => (body += chunk.toString()));
       res.on("end", () => {
-        let parsed;
         try {
-          parsed = JSON.parse(body);
+          const parsed = JSON.parse(body);
+          if (res.statusCode >= 200 && res.statusCode < 300) resolve(parsed);
+          else reject(new Error(`Mailjet HTTP ${res.statusCode}: ${body}`));
         } catch (e) {
-          return reject(
-            new Error(
-              `Mailjet HTTP response parse error: ${e.message}. Raw: ${body}`
-            )
-          );
+          reject(new Error(`Response parse error. Raw: ${body}`));
         }
-        if (res.statusCode >= 200 && res.statusCode < 300)
-          return resolve(parsed);
-        // non-2xx
-        const err = new Error(`Mailjet HTTP ${res.statusCode}`);
-        err.body = parsed;
-        return reject(err);
       });
     });
-
     req.on("error", (err) => reject(err));
     req.write(data);
     req.end();
   });
 }
 
-/* ---------- Main API: sendMail ---------- */
+/* ---------- Primary Exported Functions ---------- */
 
 /**
  * sendMail(options)
- *  - to: string | array | { Email, Name }  (required)
- *  - cc, bcc: same as to
- *  - subject: string
- *  - html: string
- *  - text: string
- *  - from: string OR { Email, Name }  (optional)
- *  - attachments: [{ filename, content: Buffer|string (utf8 or base64), contentType }]
+ * Core engine for sending emails via Mailjet.
  */
 async function sendMail({
   to,
@@ -204,117 +135,121 @@ async function sendMail({
     return { Email: from.Email, Name: from.Name || EMAIL_FROM_NAME };
   })();
 
-  const To = normalizeRecipient(to);
-  const Cc = cc ? normalizeRecipient(cc) : undefined;
-  const Bcc = bcc ? normalizeRecipient(bcc) : undefined;
-  const Attachments = attachments
-    ? normalizeAttachments(attachments)
-    : undefined;
-
   const message = {
     From,
-    To,
+    To: normalizeRecipient(to),
     Subject: subject || "(no subject)",
+    Cc: cc ? normalizeRecipient(cc) : undefined,
+    Bcc: bcc ? normalizeRecipient(bcc) : undefined,
+    TextPart: text,
+    HTMLPart: html,
+    Attachments: attachments ? normalizeAttachments(attachments) : undefined,
   };
-  if (Cc && Cc.length) message.Cc = Cc;
-  if (Bcc && Bcc.length) message.Bcc = Bcc;
-  if (typeof text === "string") message.TextPart = text;
-  if (typeof html === "string") message.HTMLPart = html;
-  if (Attachments) message.Attachments = Attachments;
 
   const body = { Messages: [message] };
 
-  // If SDK is available, use it.
   if (mailjetClient && typeof mailjetClient.post === "function") {
     try {
-      const res = await mailjetClient
-        .post("send", { version: "v3.1" })
-        .request(body);
+      const res = await mailjetClient.post("send", { version: "v3.1" }).request(body);
       return res.body;
     } catch (err) {
-      // If SDK fails with auth/validation, include raw response when possible
-      const meta = err?.response?.body || err?.message || err;
-      console.error(
-        "Mailjet SDK send error:",
-        util.inspect(meta, { depth: 2 })
-      );
-      const errMsg =
-        err?.response?.body?.Messages?.[0]?.Errors?.map(
-          (e) => e.ErrorMessage
-        ).join(", ") ||
-        err?.message ||
-        "Mailjet SDK error";
-      const error = new Error(`Mailjet SDK failed: ${errMsg}`);
-      error.meta = meta;
-      throw error;
+      console.error("Mailjet SDK Error:", util.inspect(err.response?.body || err.message, { depth: 2 }));
+      throw err;
     }
   }
 
-  // Otherwise use HTTPS fallback
-  if (!MJ_PUBLIC || !MJ_PRIVATE) {
-    throw new Error(
-      "Mailjet credentials not available for HTTPS fallback (MJ_PUBLIC/MJ_PRIVATE missing)"
-    );
-  }
-
-  try {
-    const res = await httpSendMail(body);
-    return res;
-  } catch (err) {
-    console.error(
-      "Mailjet HTTP send error:",
-      util.inspect(err.body || err, { depth: 3 })
-    );
-    const messageText =
-      (err.body && (err.body.ErrorMessage || JSON.stringify(err.body))) ||
-      err.message ||
-      "Mailjet HTTP error";
-    const e = new Error(`Mailjet HTTP send failed: ${messageText}`);
-    e.meta = err.body || err;
-    throw e;
-  }
+  return httpSendMail(body);
 }
 
-/* ---------- Optional helper: verifyTransport (lightweight health-check) ---------- */
-async function verifyTransport() {
-  // Try sending a dry-run check: Mailjet doesn't have a light ping endpoint for mail, so we do a single test
-  if (!MJ_PUBLIC || !MJ_PRIVATE) {
-    throw new Error("Mailjet API keys not set");
-  }
-  // Simple GET to /v3/REST/contactslist (requires auth) to verify keys — harmless read
-  const auth = Buffer.from(`${MJ_PUBLIC}:${MJ_PRIVATE}`).toString("base64");
-  const options = {
-    hostname: "api.mailjet.com",
-    path: "/v3/REST/RESTVersion", // this path likely doesn't exist; fallback to /v3/REST/contact
-    method: "GET",
-    headers: {
-      Authorization: `Basic ${auth}`,
-    },
-  };
+/**
+ * sendOrderStatusEmail(email, name, orderId, status, tracking, courier)
+ * Specialized function for professionally formatted order updates.
+ */
+const sendOrderStatusEmail = async (email, name, orderId, status, tracking = null, courier = null) => {
+  let statusMessage = "";
+  let color = "#3b82f6"; 
+  let trackingBlock = "";
 
-  // We'll call a known endpoint /v3/REST/contact (read-only) to check auth
+  switch (status.toLowerCase()) {
+    case "processing":
+      statusMessage = "Your order is now being processed and packed.";
+      color = "#f59e0b"; 
+      break;
+    case "shipped":
+      statusMessage = "Great news! Your order has been shipped.";
+      color = "#8b5cf6"; 
+      if (tracking && courier) {
+        trackingBlock = `
+          <div style="background-color: #f3f4f6; padding: 15px; border-radius: 8px; margin-top: 20px; text-align: center;">
+            <p style="margin: 0; font-size: 14px; color: #4b5563; text-transform: uppercase; font-weight: bold;">Tracking Information</p>
+            <p style="margin: 5px 0 0 0; font-size: 18px; color: #111827; font-weight: 900; letter-spacing: 1px;">${tracking}</p>
+            <p style="margin: 5px 0 0 0; font-size: 12px; color: #6b7280;">Courier: ${courier}</p>
+          </div>
+        `;
+      }
+      break;
+    case "delivered":
+      statusMessage = "Your order has been delivered successfully. Enjoy your product!";
+      color = "#10b981"; 
+      break;
+    case "cancelled":
+      statusMessage = "Your order has been cancelled.";
+      color = "#ef4444"; 
+      break;
+    default:
+      statusMessage = `Your order status has been updated to: ${status}`;
+  }
+
+  const htmlTemplate = `
+    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
+      <div style="background-color: #050505; padding: 30px; text-align: center; border-bottom: 4px solid ${color};">
+        <h1 style="color: #ffffff; margin: 0; font-size: 24px; letter-spacing: 2px;">ANRITVOX</h1>
+      </div>
+      <div style="padding: 40px 30px; background-color: #ffffff;">
+        <h2 style="color: #111827; margin-top: 0;">Hello ${name},</h2>
+        <p style="color: #4b5563; font-size: 16px; line-height: 1.6;">
+          ${statusMessage}
+        </p>
+        <div style="margin-top: 25px; border-left: 4px solid ${color}; padding-left: 15px;">
+          <p style="margin: 0; font-size: 14px; color: #6b7280; text-transform: uppercase; font-weight: bold;">Order Reference</p>
+          <p style="margin: 5px 0 0 0; font-size: 18px; color: #111827; font-weight: bold;">#${orderId}</p>
+        </div>
+        ${trackingBlock}
+        <p style="color: #6b7280; font-size: 14px; margin-top: 40px; border-top: 1px solid #e5e7eb; padding-top: 20px;">
+          If you have any questions about your shipment, please reply to this email or contact our support team.
+        </p>
+      </div>
+    </div>
+  `;
+
+  return sendMail({
+    to: email,
+    subject: `Order Update: #${orderId} - ${status.toUpperCase()}`,
+    html: htmlTemplate
+  });
+};
+
+/**
+ * verifyTransport()
+ * Verifies Mailjet credentials by making a lightweight API call.
+ */
+async function verifyTransport() {
+  if (!MJ_PUBLIC || !MJ_PRIVATE) throw new Error("Mailjet API keys not set");
+  const auth = Buffer.from(`${MJ_PUBLIC}:${MJ_PRIVATE}`).toString("base64");
   return new Promise((resolve, reject) => {
     const opts = {
       hostname: "api.mailjet.com",
       path: "/v3/REST/contact",
       method: "GET",
-      headers: {
-        Authorization: `Basic ${auth}`,
-      },
+      headers: { Authorization: `Basic ${auth}` },
     };
     const req = https.request(opts, (res) => {
-      // 200 or 401 give us signal
-      if (res.statusCode >= 200 && res.statusCode < 300)
-        return resolve({ ok: true, statusCode: res.statusCode });
-      let body = "";
-      res.on("data", (c) => (body += c.toString()));
-      res.on("end", () => {
-        return resolve({ ok: false, statusCode: res.statusCode, body: body });
-      });
+      if (res.statusCode >= 200 && res.statusCode < 300) resolve({ ok: true });
+      else resolve({ ok: false, statusCode: res.statusCode });
     });
     req.on("error", (err) => reject(err));
     req.end();
   });
 }
 
-module.exports = { sendMail, verifyTransport };
+module.exports = { sendMail, sendOrderStatusEmail, verifyTransport };
