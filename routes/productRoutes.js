@@ -1,5 +1,5 @@
 // backend/routes/productRoutes.js
-// Products: customer browsing + admin full control
+
 const express = require('express');
 const router = express.Router();
 const { upload, presign } = require('../config/s3Upload');
@@ -61,7 +61,6 @@ router.get('/slug/:slug', async (req, res) => {
   }
 });
 
-// GET /api/products/:id  - product detail by ID
 // GET /api/products/:id - Fetch a single product safely
 router.get('/:id', async (req, res) => {
   try {
@@ -134,9 +133,9 @@ router.post('/', authenticateAdmin, upload.array('images', 10), async (req, res)
     if (dupes.length) return res.status(400).json({ error: `Duplicate serial(s): ${[...new Set(dupes)].join(', ')}.` });
 
     const quantityToStore = cleaned.length > 0 ? cleaned.length : Number(req.body.quantity) || 0;
-    const { name, slug, sku, brand, description, price, discount_price, category_id, subcategory_id, meta_title, meta_description, tags, status } = req.body;
+    const { name, slug, sku, brand, warranty_period, description, price, discount_price, category_id, subcategory_id, meta_title, meta_description, tags, status } = req.body;
     productId = await createProduct({
-      name, slug, sku, brand, description, price,
+      name, slug, sku, brand, warranty_period, description, price,
       discount_price: discount_price || null,
       quantity: quantityToStore,
       category_id, subcategory_id: subcategory_id || null,
@@ -165,7 +164,6 @@ router.post('/', authenticateAdmin, upload.array('images', 10), async (req, res)
   }
 });
 
-// PUT /api/products/:id  - update product (admin)
 // PUT /api/products/:id  - update product (admin)
 router.put('/:id', authenticateAdmin, upload.array('images', 10), async (req, res) => {
   try {
@@ -211,9 +209,9 @@ router.put('/:id', authenticateAdmin, upload.array('images', 10), async (req, re
       req.body.serials = cleaned;
     }
     
-    const { name, slug, sku, brand, description, price, discount_price, category_id, subcategory_id, meta_title, meta_description, tags } = req.body;
+    const { name, slug, sku, brand, warranty_period, description, price, discount_price, category_id, subcategory_id, meta_title, meta_description, tags } = req.body;
     await updateProduct(productId, {
-      name, slug, sku, brand, description, price,
+      name, slug, sku, brand, warranty_period, description, price,
       discount_price: discount_price || null,
       category_id, subcategory_id: subcategory_id || null,
       meta_title, meta_description, tags,
