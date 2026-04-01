@@ -4,7 +4,6 @@ const crypto = require("crypto");
 const excel = require("exceljs");
 const pool = require("../config/db");
 const { authenticateAdmin } = require("../middleware/authMiddleware");
-
 const {
   addProductSerials,
   getProductSerials,
@@ -34,15 +33,14 @@ router.get("/:productId", async (req, res) => {
 router.get("/export/excel", authenticateAdmin, async (req, res) => {
   try {
     const { productId, status } = req.query;
-    
+
     let query = `
-      SELECT ps.serial_number, ps.status, ps.created_at, p.name as product_name
+      SELECT ps.serial_number, ps.status, ps.created_at, ps.base_warranty_months, ps.is_legacy, p.name as product_name
       FROM product_serials ps
       JOIN products p ON ps.product_id = p.id
       WHERE 1=1
     `;
     const params = [];
-
     if (productId) {
       query += ` AND ps.product_id = ?`;
       params.push(productId);
@@ -51,29 +49,24 @@ router.get("/export/excel", authenticateAdmin, async (req, res) => {
       query += ` AND ps.status = ?`;
       params.push(status);
     }
-    
+
     query += ` ORDER BY ps.created_at DESC`;
     const [serials] = await pool.query(query, params);
-
     const workbook = new excel.Workbook();
     const worksheet = workbook.addWorksheet("Serials Inventory");
-
     worksheet.columns = [
       { header: "Serial Number", key: "serial_number", width: 30 },
       { header: "Product Name", key: "product_name", width: 40 },
       { header: "Status", key: "status", width: 15 },
+      { header: "Warranty Months", key: "base_warranty_months", width: 18 },
+      { header: "Legacy", key: "is_legacy", width: 10 },
       { header: "Created At", key: "created_at", width: 25 }
     ];
-
-    // Style the header row for visual clarity
     worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
     worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F81BD' } };
-
     worksheet.addRows(serials);
-
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
     res.setHeader("Content-Disposition", `attachment; filename=Anritvox_Serials_${new Date().getTime()}.xlsx`);
-
     await workbook.xlsx.write(res);
     res.end();
   } catch (err) {
@@ -83,18 +76,28 @@ router.get("/export/excel", authenticateAdmin, async (req, res) => {
 });
 
 // POST /api/serials/generate - Advanced Pro Generator
+// NEW: accepts base_warranty_months (e.g. 6, 12, 24, 60)
+// If base_warranty_months is provided -> new-policy serial (is_legacy=0)
+// If omitted -> legacy serial (is_legacy=1, backward compatible)
 router.post("/generate", authenticateAdmin, async (req, res) => {
   try {
-    const { productId, count, prefix, format = "advanced" } = req.body;
+    const { productId, count, prefix, format = "advanced", base_warranty_months } = req.body;
     if (!productId || !count || count <= 0) {
       return res.status(400).json({ message: "Product ID and a valid Count are required" });
     }
 
-    const generatedSerials = new Set(); 
+    // Validate warranty months if provided
+    let warrantyMonths = null;
+    if (base_warranty_months !== undefined && base_warranty_months !== null && base_warranty_months !== "") {
+      warrantyMonths = parseInt(base_warranty_months, 10);
+      if (isNaN(warrantyMonths) || warrantyMonths <= 0) {
+        return res.status(400).json({ message: "base_warranty_months must be a positive integer (e.g. 6, 12, 24, 60)" });
+      }
+    }
 
+    const generatedSerials = new Set();
     while (generatedSerials.size < count) {
       let newSerial = "";
-
       if (format === "legacy") {
         const customString = prefix ? prefix.toUpperCase() : "CUSTOM";
         if (customString.length !== 6) {
@@ -109,23 +112,26 @@ router.post("/generate", authenticateAdmin, async (req, res) => {
         const mm = String(date.getMonth() + 1).padStart(2, '0');
         const randomPart = crypto.randomBytes(4).toString("hex").toUpperCase().slice(0, 6);
         const baseSerial = `${pfx}-${yy}${mm}-${randomPart}`;
-        const checksum = generateChecksum(baseSerial); 
+        const checksum = generateChecksum(baseSerial);
         newSerial = `${baseSerial}-${checksum}`;
       }
-      generatedSerials.add(newSerial); 
+      generatedSerials.add(newSerial);
     }
 
     const serialArray = Array.from(generatedSerials);
-    const result = await addProductSerials(productId, serialArray);
+    // Pass warrantyMonths to model - null = legacy, number = new-policy
+    const result = await addProductSerials(productId, serialArray, warrantyMonths);
     const [[product]] = await pool.query("SELECT quantity FROM products WHERE id = ?", [productId]);
 
     res.status(201).json({
       message: `${count} Serials generated in ${format} format.`,
       formatUsed: format,
       count: result.added,
-      serialsPreview: serialArray.slice(0, 10), 
+      serialsPreview: serialArray.slice(0, 10),
       totalGenerated: result.added,
       newStock: product ? product.quantity : null,
+      base_warranty_months: warrantyMonths,
+      is_legacy: warrantyMonths === null,
     });
   } catch (err) {
     res.status(err.status || 500).json({ message: err.message });
@@ -133,13 +139,17 @@ router.post("/generate", authenticateAdmin, async (req, res) => {
 });
 
 // POST /api/serials/:productId/add - manually add serials
+// Also accepts optional base_warranty_months
 router.post("/:productId/add", authenticateAdmin, async (req, res) => {
   try {
-    const { serials } = req.body;
+    const { serials, base_warranty_months } = req.body;
     if (!Array.isArray(serials) || serials.length === 0) {
       return res.status(400).json({ success: false, message: "Serials must be a non-empty array" });
     }
-    const result = await addProductSerials(req.params.productId, serials);
+    const warrantyMonths = (base_warranty_months !== undefined && base_warranty_months !== null && base_warranty_months !== "")
+      ? parseInt(base_warranty_months, 10)
+      : null;
+    const result = await addProductSerials(req.params.productId, serials, warrantyMonths);
     res.json({ success: true, result });
   } catch (err) {
     res.status(err.status || 500).json({ success: false, message: err.message });
@@ -194,17 +204,15 @@ router.post("/check", async (req, res) => {
 router.post("/validate-checksum", async (req, res) => {
   const { serial } = req.body;
   if (!serial) return res.status(400).json({ valid: false });
-  
-  if (!serial.includes("-")) return res.json({ valid: true, isLegacy: true });
 
+  if (!serial.includes("-")) return res.json({ valid: true, isLegacy: true });
   const parts = serial.split('-');
   const providedChecksum = parts.pop();
   const baseSerial = parts.join('-');
-  
+
   let sum = 0;
   for (let i = 0; i < baseSerial.length; i++) sum += baseSerial.charCodeAt(i);
   const calculatedChecksum = sum.toString(36).toUpperCase().slice(-1);
-
   res.json({ valid: calculatedChecksum === providedChecksum, isLegacy: false });
 });
 
