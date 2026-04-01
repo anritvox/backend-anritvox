@@ -1,4 +1,4 @@
-//Product model
+// backend/models/productModel.js
 
 const pool = require('../config/db');
 require('dotenv').config();
@@ -65,7 +65,7 @@ const attachImages = async (rows) => {
 
 const getAllProducts = async () => {
   const [rows] = await pool.query(`
-    SELECT p.id, p.name, p.slug, p.sku, p.brand, p.description,
+    SELECT p.id, p.name, p.slug, p.sku, p.brand, p.warranty_period, p.description,
       p.price, p.discount_price, p.quantity, p.status, p.tags,
       p.meta_title, p.meta_description,
       c.id AS category_id, c.name AS category_name,
@@ -81,7 +81,7 @@ const getAllProducts = async () => {
 
 const getActiveProducts = async ({ category_id, subcategory_id, min_price, max_price, search, sort } = {}) => {
   let sql = `
-    SELECT p.id, p.name, p.slug, p.sku, p.brand, p.description,
+    SELECT p.id, p.name, p.slug, p.sku, p.brand, p.warranty_period, p.description,
       p.price, p.discount_price, p.quantity, p.status, p.tags,
       c.id AS category_id, c.name AS category_name,
       sc.id AS subcategory_id, sc.name AS subcategory_name,
@@ -114,7 +114,7 @@ const getActiveProducts = async ({ category_id, subcategory_id, min_price, max_p
 
 const getProductById = async (id) => {
   const [[product]] = await pool.query(
-    `SELECT p.id, p.name, p.slug, p.sku, p.brand, p.description,
+    `SELECT p.id, p.name, p.slug, p.sku, p.brand, p.warranty_period, p.description,
       p.price, p.discount_price, p.quantity, p.status, p.tags,
       p.meta_title, p.meta_description,
       p.category_id, p.subcategory_id, p.created_at, p.updated_at
@@ -132,7 +132,7 @@ const getProductById = async (id) => {
 
 const getProductBySlug = async (slug) => {
   const [[product]] = await pool.query(
-    `SELECT p.id, p.name, p.slug, p.sku, p.brand, p.description,
+    `SELECT p.id, p.name, p.slug, p.sku, p.brand, p.warranty_period, p.description,
       p.price, p.discount_price, p.quantity, p.status, p.tags,
       p.meta_title, p.meta_description,
       c.id AS category_id, c.name AS category_name,
@@ -155,7 +155,7 @@ const getProductBySlug = async (slug) => {
 
 const createProduct = async (data) => {
   const {
-    name, slug, sku, brand, description,
+    name, slug, sku, brand, warranty_period, description,
     price, discount_price, quantity,
     category_id, subcategory_id,
     meta_title, meta_description, tags,
@@ -163,9 +163,9 @@ const createProduct = async (data) => {
   } = data;
   const [result] = await pool.query(
     `INSERT INTO products
-     (name, slug, sku, brand, description, price, discount_price, quantity, status, category_id, subcategory_id, meta_title, meta_description, tags)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [name, slug || null, sku || null, brand || null, description || null,
+     (name, slug, sku, brand, warranty_period, description, price, discount_price, quantity, status, category_id, subcategory_id, meta_title, meta_description, tags)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [name, slug || null, sku || null, brand || null, warranty_period || null, description || null,
      price, discount_price || null, quantity || 0, status,
      category_id, subcategory_id || null,
      meta_title || null, meta_description || null, tags || null]
@@ -175,7 +175,7 @@ const createProduct = async (data) => {
 
 const updateProduct = async (id, data) => {
   const {
-    name, slug, sku, brand, description,
+    name, slug, sku, brand, warranty_period, description,
     price, discount_price, 
     category_id, subcategory_id,
     meta_title, meta_description, tags,
@@ -183,12 +183,12 @@ const updateProduct = async (id, data) => {
   
   await pool.query(
     `UPDATE products SET
-     name=?, slug=?, sku=?, brand=?, description=?,
+     name=?, slug=?, sku=?, brand=?, warranty_period=?, description=?,
      price=?, discount_price=?, 
      category_id=?, subcategory_id=?,
      meta_title=?, meta_description=?, tags=?
      WHERE id=?`,
-    [name, slug || null, sku || null, brand || null, description || null,
+    [name, slug || null, sku || null, brand || null, warranty_period || null, description || null,
      price, discount_price || null, 
      category_id, subcategory_id || null,
      meta_title || null, meta_description || null, tags || null, id]
