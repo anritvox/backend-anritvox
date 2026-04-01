@@ -3,6 +3,28 @@ const pool = require("../config/db");
 require('dotenv').config();
 const CLOUDFRONT_BASE_URL = process.env.CLOUDFRONT_BASE_URL || "";
 
+// ─── IST helper ───────────────────────────────────────────────────
+const getISTDateString = () => {
+  // Returns today's date as YYYY-MM-DD in IST (UTC+5:30)
+  const now = new Date();
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const istDate = new Date(now.getTime() + istOffset);
+  return istDate.toISOString().split('T')[0];
+};
+
+const daysDiff = (dateStrA, dateStrB) => {
+  // dateStrA - dateStrB in whole days (positive means A is later)
+  const a = new Date(dateStrA);
+  const b = new Date(dateStrB);
+  return Math.round((a - b) / (1000 * 60 * 60 * 24));
+};
+
+const addMonths = (dateStr, months) => {
+  const d = new Date(dateStr);
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString().split('T')[0];
+};
+
 const initWarrantyTable = async () => {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS warranty_registrations (
@@ -22,22 +44,29 @@ const initWarrantyTable = async () => {
     try { await pool.query(`ALTER TABLE ${table} ADD COLUMN ${sql}`); } catch (e) {}
   };
 
+  // Original columns (preserved for backward compatibility)
   await addCol('warranty_registrations', 'serial_number_id INT AFTER registered_serial');
   await addCol('warranty_registrations', 'user_name VARCHAR(255) AFTER product_id');
   await addCol('warranty_registrations', 'user_email VARCHAR(255) AFTER user_name');
   await addCol('warranty_registrations', 'user_phone VARCHAR(50) AFTER user_email');
   await addCol('warranty_registrations', 'purchase_date DATE AFTER user_phone');
   await addCol('warranty_registrations', 'invoice_number VARCHAR(100) AFTER purchase_date');
-  // New Shop Name Column added safely
   await addCol('warranty_registrations', 'shop_name VARCHAR(255) AFTER invoice_number');
+
+  // NEW columns for e-warranty policy
+  await addCol('warranty_registrations', 'registration_date DATE NULL DEFAULT NULL AFTER shop_name');
+  await addCol('warranty_registrations', 'warranty_end_date DATE NULL DEFAULT NULL AFTER registration_date');
+  await addCol('warranty_registrations', 'invoice_url VARCHAR(500) NULL DEFAULT NULL AFTER warranty_end_date');
+  await addCol('warranty_registrations', 'is_legacy TINYINT(1) NOT NULL DEFAULT 1 AFTER invoice_url');
 };
 
 const validateSerial = async (serial) => {
   if (!serial) throw { status: 400, message: "Serial number is missing." };
   const s = String(serial).trim().toUpperCase();
-  
+
   const [rows] = await pool.query(
-    `SELECT ps.id AS serial_id, ps.product_id, ps.serial_number, ps.status, 
+    `SELECT ps.id AS serial_id, ps.product_id, ps.serial_number, ps.status,
+            ps.base_warranty_months, ps.is_legacy,
             p.name AS product_name, p.brand, p.warranty_period,
             c.id AS category_id, c.name AS category_name
      FROM product_serials ps
@@ -46,43 +75,88 @@ const validateSerial = async (serial) => {
      WHERE ps.serial_number = ?`,
     [s]
   );
-  
+
   if (rows.length === 0) throw { status: 404, message: "Serial number not found in our database." };
   const rec = rows[0];
-
   const [imageRows] = await pool.query('SELECT file_path FROM product_images WHERE product_id = ?', [rec.product_id]);
   rec.images = imageRows.map((img) => `${CLOUDFRONT_BASE_URL}/${img.file_path}`);
   return rec;
 };
 
 const registerWarranty = async (data) => {
-  await initWarrantyTable(); 
+  await initWarrantyTable();
 
-  // Accept shopName instead of invoiceNumber
-  const { serialNumber, serial, productId, customerName, email, phone, purchaseDate, shopName } = data;
+  const { serialNumber, serial, productId, customerName, email, phone,
+          purchaseDate, shopName, invoiceUrl } = data;
   const targetSerial = serialNumber || serial;
-  
+
   if (!targetSerial) throw { status: 400, message: "Serial number is required." };
   if (!productId) throw { status: 400, message: "Product ID is required." };
 
   const rec = await validateSerial(targetSerial);
-  
-  if (Number(rec.product_id) !== Number(productId)) throw { status: 400, message: "Product mismatch for given serial number." };
-  if (rec.status === 'registered' || rec.status === 'sold') throw { status: 400, message: "This serial number is already registered for warranty." };
+
+  if (Number(rec.product_id) !== Number(productId))
+    throw { status: 400, message: "Product mismatch for given serial number." };
+  if (rec.status === 'registered' || rec.status === 'sold')
+    throw { status: 400, message: "This serial number is already registered for warranty." };
+
+  // ─── NEW-POLICY 14-DAY VALIDATION (only for non-legacy serials) ──────────
+  const isLegacySerial = rec.is_legacy === 1 || rec.is_legacy === true;
+  let registrationDate = null;
+  let warrantyEndDate = null;
+
+  if (!isLegacySerial) {
+    if (!purchaseDate) throw { status: 400, message: "Purchase date is required for e-warranty registration." };
+
+    // Server-side IST date - never trust client time
+    registrationDate = getISTDateString();
+    const diff = daysDiff(registrationDate, purchaseDate);
+
+    // Reject future purchase dates
+    if (diff < 0) throw { status: 400, message: "Purchase date cannot be in the future." };
+
+    // THE 14-DAY RULE
+    if (diff > 14) {
+      throw {
+        status: 400,
+        message: "E-warranty has not been done within 14 days. Only a hard copy of the warranty will be eligible for this product."
+      };
+    }
+
+    // PASSED: calculate warranty_end_date = purchase_date + base_warranty_months + 1 bonus month
+    const totalMonths = (rec.base_warranty_months || 12) + 1;
+    warrantyEndDate = addMonths(purchaseDate, totalMonths);
+  }
 
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
-    // Insert shop_name into the database
+
     const [result] = await conn.query(
-      `INSERT INTO warranty_registrations 
-        (registered_serial, serial_number_id, product_id, user_name, user_email, user_phone, purchase_date, shop_name, status) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'accepted')`,
-      [rec.serial_number, rec.serial_id, productId, customerName || null, email || null, phone || null, purchaseDate || null, shopName || null]
+      `INSERT INTO warranty_registrations
+        (registered_serial, serial_number_id, product_id, user_name, user_email,
+         user_phone, purchase_date, shop_name, registration_date, warranty_end_date,
+         invoice_url, is_legacy, status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'accepted')`,
+      [
+        rec.serial_number, rec.serial_id, productId,
+        customerName || null, email || null, phone || null,
+        purchaseDate || null, shopName || null,
+        registrationDate, warrantyEndDate,
+        invoiceUrl || null,
+        isLegacySerial ? 1 : 0
+      ]
     );
+
     await conn.query(`UPDATE product_serials SET status = 'registered' WHERE serial_number = ?`, [rec.serial_number]);
     await conn.commit();
-    return { registration_id: result.insertId };
+
+    return {
+      registration_id: result.insertId,
+      warranty_end_date: warrantyEndDate,
+      registration_date: registrationDate,
+      is_legacy: isLegacySerial
+    };
   } catch (error) {
     await conn.rollback();
     throw error;
@@ -94,9 +168,9 @@ const registerWarranty = async (data) => {
 const getAllRegistrations = async () => {
   await initWarrantyTable();
   const [rows] = await pool.query(
-    `SELECT wr.*, p.name AS product_name 
-     FROM warranty_registrations wr 
-     JOIN products p ON wr.product_id = p.id 
+    `SELECT wr.*, p.name AS product_name
+     FROM warranty_registrations wr
+     JOIN products p ON wr.product_id = p.id
      ORDER BY wr.registered_at DESC`
   );
   return rows;
@@ -111,7 +185,8 @@ const deleteWarranty = async (id) => {
   try {
     await conn.beginTransaction();
     const [rows] = await conn.query('SELECT registered_serial FROM warranty_registrations WHERE id = ?', [id]);
-    if (rows.length > 0) await conn.query("UPDATE product_serials SET status = 'available' WHERE serial_number = ?", [rows[0].registered_serial]);
+    if (rows.length > 0)
+      await conn.query("UPDATE product_serials SET status = 'available' WHERE serial_number = ?", [rows[0].registered_serial]);
     await conn.query('DELETE FROM warranty_registrations WHERE id = ?', [id]);
     await conn.commit();
   } catch (error) {
@@ -122,4 +197,11 @@ const deleteWarranty = async (id) => {
   }
 };
 
-module.exports = { validateSerial, registerWarranty, getAllRegistrations, updateWarrantyStatus, deleteWarranty, initWarrantyTable };
+module.exports = {
+  validateSerial,
+  registerWarranty,
+  getAllRegistrations,
+  updateWarrantyStatus,
+  deleteWarranty,
+  initWarrantyTable
+};
