@@ -1,4 +1,4 @@
-// backend/models/notificationModel
+// backend/models/notificationMode
 
 const pool = require('../config/db');
 
