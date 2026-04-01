@@ -12,10 +12,12 @@ const {
 const { authenticateAdmin } = require("../middleware/authMiddleware");
 
 // PUBLIC: Check serial for the E-Warranty form
+// Returns serial info including is_legacy and base_warranty_months
+// so the frontend can show the purchase date field only for new-policy serials
 router.get("/validate/:serial", async (req, res) => {
   try {
     if (!req.params.serial) {
-        return res.status(400).json({ message: "Serial parameter is required" });
+      return res.status(400).json({ message: "Serial parameter is required" });
     }
     const info = await validateSerial(req.params.serial);
     res.json(info);
@@ -25,15 +27,22 @@ router.get("/validate/:serial", async (req, res) => {
 });
 
 // PUBLIC: Register the warranty
+// Body fields:
+//   serialNumber / serial, productId, customerName, email, phone,
+//   purchaseDate (required for new-policy serials), shopName,
+//   invoiceUrl (optional, for anti-tampering audit trail)
+//
+// The 14-day IST validation and warranty_end_date calculation happen
+// entirely server-side inside warrantyModel.registerWarranty()
 router.post("/register", async (req, res) => {
   try {
-    // Basic body check to prevent empty payload crashes
     if (!req.body || Object.keys(req.body).length === 0) {
       return res.status(400).json({ message: "Empty request payload" });
     }
     const result = await registerWarranty(req.body);
     res.status(201).json(result);
   } catch (err) {
+    // Preserve the exact error status (400 for 14-day rejection, 404 for invalid serial, etc.)
     res.status(err.status || 500).json({ message: err.message || "Registration failed" });
   }
 });
@@ -72,15 +81,11 @@ router.delete("/admin/:id", authenticateAdmin, async (req, res) => {
 router.delete("/serials/:id", authenticateAdmin, async (req, res) => {
   try {
     const serialId = req.params.id;
-    // Get the serial info first to know the product_id for stock adjustment
     const [rows] = await pool.query("SELECT product_id FROM product_serials WHERE id = ?", [serialId]);
     if (rows.length === 0) return res.status(404).json({ message: "Serial not found" });
     const productId = rows[0].product_id;
     await pool.query("DELETE FROM product_serials WHERE id = ?", [serialId]);
-    
-    // Fixed: Changed 'stock' to 'quantity' to match standard database schema
     await pool.query("UPDATE products SET quantity = GREATEST(0, quantity - 1) WHERE id = ?", [productId]);
-    
     res.json({ message: "Serial number deleted and inventory adjusted" });
   } catch (err) {
     console.error("Delete serial error:", err);
@@ -89,10 +94,12 @@ router.delete("/serials/:id", authenticateAdmin, async (req, res) => {
 });
 
 // ADMIN: Get all serials with product info (for full serial management)
+// Now includes base_warranty_months and is_legacy for admin visibility
 router.get("/serials", authenticateAdmin, async (req, res) => {
   try {
     const [rows] = await pool.query(`
       SELECT ps.id, ps.serial_number, ps.status, ps.product_id, ps.created_at,
+             ps.base_warranty_months, ps.is_legacy,
              p.name as product_name, p.sku
       FROM product_serials ps
       LEFT JOIN products p ON ps.product_id = p.id
