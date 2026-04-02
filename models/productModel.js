@@ -223,6 +223,7 @@ const addSerialNumber = async (productId, serial) => {
 const deleteProduct = async (id) => {
   const [product] = await pool.query('SELECT id, name FROM products WHERE id = ?', [id]);
   if (product.length === 0) throw { status: 404, message: 'Product not found' };
+  
   const [activeWarranties] = await pool.query(
     `SELECT COUNT(*) as count FROM warranty_registrations WHERE product_id = ? AND status = 'accepted'`,
     [id]
@@ -233,11 +234,31 @@ const deleteProduct = async (id) => {
       message: `Cannot delete product '${product[0].name}': ${activeWarranties[0].count} active warranty registration(s) exist.`,
     };
   }
+  
   await pool.query('DELETE FROM warranty_registrations WHERE product_id = ?', [id]);
   await pool.query('DELETE FROM serial_numbers WHERE product_id = ?', [id]);
   await pool.query('DELETE FROM product_images WHERE product_id = ?', [id]);
   await pool.query('DELETE FROM products WHERE id = ?', [id]);
   return { deleted: true, productName: product[0].name };
+};
+
+// NEW: Independent Stock Control
+const updateProductStock = async (id, quantityChange, operation = 'set') => {
+  // operation can be 'set' (absolute number), 'add', or 'subtract'
+  let query = '';
+  if (operation === 'set') {
+    query = 'UPDATE products SET quantity = ? WHERE id = ?';
+  } else if (operation === 'add') {
+    query = 'UPDATE products SET quantity = quantity + ? WHERE id = ?';
+  } else if (operation === 'subtract') {
+    // Ensure we don't go below 0
+    query = 'UPDATE products SET quantity = GREATEST(0, quantity - ?) WHERE id = ?';
+  }
+
+  await pool.query(query, [quantityChange, id]);
+  
+  const [[updatedProduct]] = await pool.query('SELECT quantity FROM products WHERE id = ?', [id]);
+  return updatedProduct.quantity;
 };
 
 module.exports = {
@@ -253,4 +274,5 @@ module.exports = {
   deleteProductImage,
   addSerialNumber,
   deleteProduct,
+  updateProductStock,
 };
