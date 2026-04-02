@@ -1,3 +1,4 @@
+// backend/models/serialModel.js
 const pool = require("../config/db");
 
 // ─── Helper: safely add a column (idempotent) ───────────────────────────────
@@ -65,6 +66,7 @@ const addProductSerials = async (productId, serials, base_warranty_months = null
 
   const chunkSize = 1000;
   let firstInsertId = null;
+  
   for (let i = 0; i < cleanedSerials.length; i += chunkSize) {
     const chunk = cleanedSerials.slice(i, i + chunkSize);
     const values = chunk.map((serial) => [productId, serial, 'available', base_warranty_months, isLegacy]);
@@ -75,13 +77,6 @@ const addProductSerials = async (productId, serials, base_warranty_months = null
     );
     if (i === 0) firstInsertId = result.insertId;
   }
-
-  await pool.query(
-    `UPDATE products
-     SET quantity = (SELECT COUNT(*) FROM product_serials WHERE product_id = ? AND status = 'available')
-     WHERE id = ?`,
-    [productId, productId]
-  );
 
   return { added: cleanedSerials.length, serials: cleanedSerials, insertId: firstInsertId };
 };
@@ -94,25 +89,27 @@ const deleteProductSerial = async (productId, serialId) => {
      WHERE ps.id = ? AND ps.product_id = ?`,
     [serialId, productId]
   );
+  
   if (serial.length === 0) throw { status: 404, message: "Serial number not found for this product" };
   if (serial[0].warranty_id || serial[0].status === 'registered') {
     throw { status: 409, message: `Cannot delete serial '${serial[0].serial_number}' - it has an active warranty registration` };
   }
+  
   await pool.query("DELETE FROM product_serials WHERE id = ?", [serialId]);
-  await pool.query(
-    `UPDATE products SET quantity = (SELECT COUNT(*) FROM product_serials WHERE product_id = ? AND status = 'available') WHERE id = ?`,
-    [productId, productId]
-  );
+  
   return { deleted: serial[0].serial_number };
 };
 
 const updateProductSerial = async (productId, serialId, newSerial) => {
   const cleanedSerial = newSerial.trim().toUpperCase();
   if (!/^[A-Z0-9-]+$/.test(cleanedSerial)) throw { status: 400, message: "Invalid serial number format" };
+  
   const [existing] = await pool.query(`SELECT serial_number FROM product_serials WHERE id = ? AND product_id = ?`, [serialId, productId]);
   if (existing.length === 0) throw { status: 404, message: "Serial number not found for this product" };
+  
   const [duplicate] = await pool.query("SELECT id FROM product_serials WHERE serial_number = ? AND id != ?", [cleanedSerial, serialId]);
   if (duplicate.length > 0) throw { status: 409, message: `Serial '${cleanedSerial}' already exists` };
+  
   await pool.query("UPDATE product_serials SET serial_number = ? WHERE id = ?", [cleanedSerial, serialId]);
   return { id: serialId, oldSerial: existing[0].serial_number, newSerial: cleanedSerial };
 };
@@ -130,6 +127,7 @@ const checkSerialAvailability = async (serial) => {
      WHERE ps.serial_number = ?`,
     [cleanedSerial]
   );
+  
   return {
     available: rows.length > 0 && rows[0].status === 'available',
     exists: rows.length > 0,
