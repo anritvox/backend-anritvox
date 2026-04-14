@@ -100,7 +100,7 @@ const getAllProducts = async () => {
     LEFT JOIN categories c ON p.category_id = c.id
     LEFT JOIN subcategories sc ON p.subcategory_id = sc.id
     ORDER BY p.created_at DESC
-  `);
+  `); // p.* now includes video_urls, product_links, and model_3d_url
   return attachImages(rows);
 };
 
@@ -111,7 +111,7 @@ const getActiveProducts = async ({ category_id, subcategory_id, min_price, max_p
     LEFT JOIN categories c ON p.category_id = c.id
     LEFT JOIN subcategories sc ON p.subcategory_id = sc.id
     WHERE p.status = 'active'
-  `;
+  `; // p.* ensures new fields are pulled for the shop/home pages
   const params = [];
 
   if (category_id) { sql += ' AND p.category_id = ?'; params.push(category_id); }
@@ -136,6 +136,7 @@ const getActiveProducts = async ({ category_id, subcategory_id, min_price, max_p
   return attachImages(rows);
 };
 
+// ... update getProductById to ensure it also uses p.* if not already ...
 const getProductById = async (id) => {
   const [[product]] = await pool.query(
     'SELECT p.*, c.name AS category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id WHERE p.id = ?',
@@ -149,7 +150,7 @@ const getProductById = async (id) => {
   );
   
   product.images = images.map((r) => ({
-    url: r.file_path.startsWith('http') ? r.file_path : `${CLOUDFRONT_BASE_URL}/${r.file_path}`,
+    url: r.file_path.startsWith('http') ? r.file_path : `${process.env.CLOUDFRONT_BASE_URL}/${r.file_path}`,
     type: r.media_type || 'image'
   }));
   
