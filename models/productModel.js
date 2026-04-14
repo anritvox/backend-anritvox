@@ -301,18 +301,3 @@ module.exports = {
   deleteProduct,
   updateProductStock
 };
-
-module.exports = {
-  initProductsTable,
-  getAllProducts,
-  getActiveProducts,
-  getProductById,
-  getProductBySlug,
-  createProduct,
-  updateProduct,
-  updateProductStatus,
-  addProductImage,
-  deleteProductImage,
-  deleteProduct,
-  updateProductStock
-};
