@@ -5,7 +5,7 @@ const { authenticateAdmin } = require('../middleware/authMiddleware');
 const multer = require('multer');
 const upload = multer({ dest: 'uploads/' });
 
-// GET all active products (Public)
+// GET all active products (Public
 router.get('/active', async (req, res) => {
   try {
     const products = await productModel.getActiveProducts(req.query);
