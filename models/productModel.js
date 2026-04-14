@@ -264,6 +264,44 @@ const updateProductStock = async (id, quantityChange, operation = 'set') => {
   return updatedProduct.quantity;
 };
 
+// ... [Keep all your existing functions above this untouched] ...
+
+const updateProductStock = async (id, quantityChange, operation = 'set') => {
+  let query = '';
+  if (operation === 'set') {
+    query = 'UPDATE products SET quantity = ? WHERE id = ?';
+  } else if (operation === 'add') {
+    query = 'UPDATE products SET quantity = quantity + ? WHERE id = ?';
+  } else if (operation === 'subtract') {
+    query = 'UPDATE products SET quantity = GREATEST(0, quantity - ?) WHERE id = ?';
+  }
+
+  await pool.query(query, [quantityChange, id]);
+  const [[updatedProduct]] = await pool.query('SELECT quantity FROM products WHERE id = ?', [id]);
+  return updatedProduct.quantity;
+};
+
+initProductsTable().then(() => {
+  console.log('[DB] Products table verified and columns updated successfully.');
+}).catch((e) => {
+  console.error('[DB] productModel migration error:', e);
+});
+
+module.exports = {
+  initProductsTable,
+  getAllProducts,
+  getActiveProducts,
+  getProductById,
+  getProductBySlug,
+  createProduct,
+  updateProduct,
+  updateProductStatus,
+  addProductImage,
+  deleteProductImage,
+  deleteProduct,
+  updateProductStock
+};
+
 module.exports = {
   initProductsTable,
   getAllProducts,
