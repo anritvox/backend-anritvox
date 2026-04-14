@@ -1,16 +1,17 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
-const { requireAdminAuth } = require('../middleware/authMiddleware');
 
-router.get('/kpis', requireAdminAuth, async (req, res) => {
+// FIXED: Using the exact exported name from your authMiddleware
+const { authenticateAdmin } = require('../middleware/authMiddleware');
+
+router.get('/kpis', authenticateAdmin, async (req, res) => {
   try {
     const period = req.query.period || '30d';
     let days = 30;
     if (period === '7d') days = 7;
     if (period === '90d') days = 90;
 
-    // Fixed: Changed total_price to total_amount to match schema
     const [salesData] = await db.execute(`
       SELECT DATE(created_at) as period,
         COUNT(*) as orders,
