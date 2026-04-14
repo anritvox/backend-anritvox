@@ -68,13 +68,14 @@ const validateSerial = async (serial) => {
     `SELECT ps.id AS serial_id, ps.product_id, ps.serial_number, ps.status,
             ps.base_warranty_months, ps.is_legacy,
             p.name AS product_name, p.brand, p.warranty_period,
+            p.video_urls, p.product_links, p.model_3d_url, 
             c.id AS category_id, c.name AS category_name
      FROM product_serials ps
      JOIN products p ON ps.product_id = p.id
      JOIN categories c ON p.category_id = c.id
      WHERE ps.serial_number = ?`,
     [s]
-  );
+  ); 
 
   if (rows.length === 0) throw { status: 404, message: "Serial number not found in our database." };
   const rec = rows[0];
