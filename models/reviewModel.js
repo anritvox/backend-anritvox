@@ -1,4 +1,4 @@
-// backend/models/reviewModel
+// backend/models/reviewMode
 
 const pool = require('../config/db');
 
