@@ -4,16 +4,16 @@ const router = express.Router();
 const pool = require('../config/db');
 const { authenticateAdmin } = require('../middleware/authMiddleware');
 
-// GET /api/inventory - admin: full inventory list with stock levels
 router.get('/', authenticateAdmin, async (req, res) => {
   try {
     const [rows] = await pool.query(`
-      SELECT p.id, p.name, p.sku, p.quantity AS stock, p.price, p.discount_price AS sale_price, p.status AS is_active,
-        c.name as category_name
+      SELECT p.id, p.name, p.sku, p.quantity AS stock, p.price, p.discount_price AS sale_price, 
+             p.status AS is_active, p.video_urls, p.product_links,
+             c.name as category_name
       FROM products p
       LEFT JOIN categories c ON p.category_id = c.id
       ORDER BY p.quantity ASC
-    `);
+    `); // Added p.video_urls and p.product_links to the selection
     res.json(rows);
   } catch (err) {
     console.error(err);
