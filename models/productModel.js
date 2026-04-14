@@ -1,4 +1,4 @@
-// backend/models/productModel.js
+// backend/models/productModel.j
 const pool = require('../config/db');
 require('dotenv').config();
 
