@@ -12,7 +12,7 @@ const ReturnModel = {
   },
 
   getReturnsByUser: async (userId) => {
-    // Fixed: Changed o.order_number to o.id as order_number to match schema
+    // Fixed: Changed o.order_number to o.id as order_number to match schem
     const [rows] = await db.execute(
       `SELECT r.*, o.id as order_number FROM returns r
        JOIN orders o ON r.order_id = o.id
