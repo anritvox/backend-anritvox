@@ -3,8 +3,9 @@
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js"
+    "start": "node dist/index.js",
+    "dev": "nodemon server.js",
+    "build": "ncc build server.js -o dist -m"
   },
   "keywords": [],
   "author": "",
@@ -16,6 +17,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.859.0",
     "@aws-sdk/s3-request-presigner": "^3.859.0",
+    "@vercel/ncc": "^0.38.1",
     "aws-sdk": "^2.1692.0",
     "exceljs": "^4.4.0",
     "bcrypt": "^6.0.0",
