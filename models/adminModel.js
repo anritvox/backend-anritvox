@@ -1,6 +1,6 @@
 // backend/models/adminModel.js
 const pool = require("../config/db");
-const bcrypt = require("bcrypt");
+const bcrypt = require("bcryptjs");
 
 const getAdminByEmail = async (email) => {
   const [rows] = await pool.query(
