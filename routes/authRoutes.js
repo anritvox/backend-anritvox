@@ -6,7 +6,6 @@ const pool = require('../config/db');
 // Import Rate Limiters
 const { registerLimiter, loginLimiter } = require('../middleware/rateLimiter');
 
-// Import BOTH Admin and Customer Models (Aliasing verifyPassword to prevent conflicts)
 const { 
   getAdminByEmail, 
   getAdminById, 
