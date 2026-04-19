@@ -1,4 +1,4 @@
-// backend/models/adminModel.js
+// backend/models/adminModel.j
 const pool = require("../config/db");
 const bcrypt = require("bcrypt");
 
