@@ -2,78 +2,124 @@
 const pool = require('../config/db');
 
 const createCartTable = async () => {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS cart_items (
-      id INT AUTO_INCREMENT PRIMARY KEY,
-      user_id INT NOT NULL,
-      product_id INT NOT NULL,
-      quantity INT NOT NULL DEFAULT 1,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE KEY uq_user_product (user_id, product_id),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
+  try {
+    // 1. Create table if not exists
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS cart_items (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        product_id INT NOT NULL,
+        quantity INT NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_user_product (user_id, product_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )
+    `);
+
+    // 2. Migration: Ensure UNIQUE KEY exists (for existing tables)
+    const [indexes] = await pool.query("SHOW INDEX FROM cart_items WHERE Key_name = 'uq_user_product'");
+    if (indexes.length === 0) {
+      console.log("[DB] Adding missing unique constraint to cart_items...");
+      await pool.query("ALTER TABLE cart_items ADD UNIQUE KEY uq_user_product (user_id, product_id)");
+    }
+
+    // 3. Migration: Ensure Foreign Key exists
+    const [fk] = await pool.query(`
+      SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE 
+      WHERE TABLE_NAME = 'cart_items' AND COLUMN_NAME = 'user_id' AND REFERENCED_TABLE_NAME = 'users'
+    `);
+    if (fk.length === 0) {
+       await pool.query("ALTER TABLE cart_items ADD CONSTRAINT fk_cart_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE");
+    }
+
+  } catch (err) {
+    console.error("[DB] cartModel migration error:", err.message);
+  }
 };
 
 // Get cart with full product details + stock info
 const getCartByUser = async (userId) => {
-  const [rows] = await pool.query(
-    `SELECT ci.id, ci.quantity, ci.product_id,
-     p.name, p.price, p.discount_price, p.quantity AS stock,
-     p.status, p.sku, p.brand,
-     (SELECT file_path FROM product_images WHERE product_id = p.id LIMIT 1) AS image
-     FROM cart_items ci
-     JOIN products p ON p.id = ci.product_id
-     WHERE ci.user_id = ?`,
-    [userId]
-  );
-  return rows.map((r) => ({
-    ...r,
-    unit_price: r.discount_price || r.price,
-    subtotal: parseFloat(r.discount_price || r.price) * r.quantity,
-  }));
+  try {
+    const [rows] = await pool.query(
+      `SELECT ci.id, ci.quantity, ci.product_id, 
+              p.name, p.price, p.discount_price, p.quantity AS stock,
+              p.status, p.sku, p.brand,
+              (SELECT file_path FROM product_images WHERE product_id = p.id LIMIT 1) AS image
+       FROM cart_items ci
+       JOIN products p ON p.id = ci.product_id
+       WHERE ci.user_id = ?`,
+      [userId]
+    );
+
+    return rows.map((r) => ({
+      ...r,
+      unit_price: parseFloat(r.discount_price || r.price || 0),
+      subtotal: parseFloat(r.discount_price || r.price || 0) * r.quantity,
+    }));
+  } catch (err) {
+    console.error("getCartByUser Error:", err);
+    throw err;
+  }
 };
 
 // Add or update item with stock validation
-// FIX: Increment quantity on duplicate instead of replacing it
 const upsertCartItem = async (userId, productId, quantity) => {
-  // Check product exists and is active
+  try {
+    // Check product exists and is active
+    const [products] = await pool.query(
+      "SELECT id, quantity, status FROM products WHERE id = ?",
+      [productId]
+    );
+    
+    if (!products.length || products[0].status !== 'active') {
+      throw { status: 400, message: 'Product is not available.' };
+    }
+
+    // Check if item already in cart to calculate total requested quantity
+    const [existing] = await pool.query(
+      "SELECT quantity FROM cart_items WHERE user_id = ? AND product_id = ?",
+      [userId, productId]
+    );
+
+    const currentQtyInCart = existing.length > 0 ? existing[0].quantity : 0;
+    const totalRequested = currentQtyInCart + quantity;
+
+    if (products[0].quantity < totalRequested) {
+      throw { 
+        status: 400, 
+        message: `Stock limit reached. You have ${currentQtyInCart} in cart and tried to add ${quantity}. Only ${products[0].quantity} available.` 
+      };
+    }
+
+    // Use INSERT ... ON DUPLICATE KEY UPDATE
+    // Note: VALUES(col) is deprecated in MySQL 8.0.20+, but still works. 
+    // For maximum compatibility across MariaDB/MySQL versions:
+    await pool.query(
+      `INSERT INTO cart_items (user_id, product_id, quantity) 
+       VALUES (?, ?, ?) 
+       ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)`,
+      [userId, productId, quantity]
+    );
+
+    return getCartByUser(userId);
+  } catch (err) {
+    console.error("upsertCartItem Error:", err);
+    throw err;
+  }
+};
+
+const updateCartItemQuantity = async (userId, productId, quantity) => {
+  if (quantity < 1) return removeCartItem(userId, productId);
+  
   const [products] = await pool.query(
     "SELECT id, quantity, status FROM products WHERE id = ?",
     [productId]
   );
   
   if (!products.length || products[0].status !== 'active') {
-    throw { status: 400, message: 'Product is not available.' };
-  }
-
-  // Stock check (For "Add to Cart", we just check if it's generally in stock)
-  if (products[0].quantity < quantity) {
-    throw { status: 400, message: `Only ${products[0].quantity} item(s) available in stock.` };
-  }
-
-  await pool.query(
-    `INSERT INTO cart_items (user_id, product_id, quantity)
-     VALUES (?, ?, ?)
-     ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)`,
-    [userId, productId, quantity]
-  );
-
-  return getCartByUser(userId);
-};
-
-// New function specifically for setting quantity (used for manual updates in cart page)
-const updateCartItemQuantity = async (userId, productId, quantity) => {
-  if (quantity < 1) return removeCartItem(userId, productId);
-
-  // Check stock
-  const [products] = await pool.query(
-    "SELECT id, quantity, status FROM products WHERE id = ?",
-    [productId]
-  );
-  if (!products.length || products[0].status !== 'active') {
     throw { status: 400, message: 'Product is no longer available.' };
   }
+
   if (products[0].quantity < quantity) {
     throw { status: 400, message: `Only ${products[0].quantity} item(s) available.` };
   }
@@ -98,7 +144,6 @@ const clearCart = async (userId) => {
   await pool.query('DELETE FROM cart_items WHERE user_id = ?', [userId]);
 };
 
-// Get cart total (used at checkout)
 const getCartTotal = async (userId) => {
   const items = await getCartByUser(userId);
   const total = items.reduce((sum, i) => sum + i.subtotal, 0);
