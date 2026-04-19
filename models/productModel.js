@@ -11,6 +11,84 @@ const addColIfMissing = async (table, column, definition) => {
       await pool.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
       console.log(`[DB] Added column ${column} to ${table}`);
     }
+    is_featured BOOLEAN DEFAULT FALSE,
+    is_trending BOOLEAN DEFAULT FALSE,
+    is_new_arrival BOOLEAN DEFAULT FALSE,
+    rating DECIMAL(3,2) DEFAULT 0,
+    review_count INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
+    FOREIGN KEY (subcategory_id) REFERENCES subcategories(id) ON DELETE SET NULL
+  )
+` );
+
+  // Migrations for existing tables
+  await addColIfMissing('products', 'quantity', "INT DEFAULT 0");
+  await addColIfMissing('products', 'status', "ENUM('active', 'inactive') DEFAULT 'active'");
+  await addColIfMissing('products', 'is_featured', "BOOLEAN DEFAULT FALSE");
+  await addColIfMissing('products', 'is_trending', "BOOLEAN DEFAULT FALSE");
+  await addColIfMissing('products', 'is_new_arrival', "BOOLEAN DEFAULT FALSE");
+  await addColIfMissing('products', 'rating', "DECIMAL(3,2) DEFAULT 0");
+  await addColIfMissing('products', 'review_count', "INT DEFAULT 0");
+};
+
+// Initialize the table
+initProductsTable().catch(err => console.error('[DB] Product table init failed:', err));
+
+const Product = {
+  // Enhanced query to include CloudFront URL prefixing for images
+  async getAll(filters = {}) {
+    let query = `
+      SELECT p.*, c.name as category_name, s.name as subcategory_name 
+      FROM products p
+      LEFT JOIN categories c ON p.category_id = c.id
+      LEFT JOIN subcategories s ON p.subcategory_id = s.id
+      WHERE 1=1
+    `;
+    const params = [];
+
+    if (filters.status) {
+      query += " AND p.status = ?";
+      params.push(filters.status);
+    }
+
+    if (filters.category) {
+      query += " AND p.category_id = ?";
+      params.push(filters.category);
+    }
+
+    const [rows] = await pool.query(query, params);
+    return rows.map(product => ({
+      ...product,
+      image_url: product.image ? `${CLOUDFRONT_BASE_URL}/${product.image}` : null
+    }));
+  },
+
+  async getById(id) {
+    const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [id]);
+    if (rows.length === 0) return null;
+    return {
+      ...rows[0],
+      image_url: rows[0].image ? `${CLOUDFRONT_BASE_URL}/${rows[0].image}` : null
+    };
+  },
+
+  async updateStock(productId, quantityChange, connection = pool) {
+    // quantityChange can be negative (for orders) or positive (for restock)
+    const [result] = await connection.query(
+      'UPDATE products SET quantity = quantity + ? WHERE id = ? AND (quantity + ?) >= 0',
+      [quantityChange, productId, quantityChange]
+    );
+    if (result.affectedRows === 0) {
+      throw new Error('Insufficient stock or product not found');
+    }
+    return result;
+  }
+};
+
+module.exports = Product;
+
   } catch (err) {
     console.error(`[DB] Error adding column ${column} to ${table}:`, err.message);
   }
