@@ -1,4 +1,4 @@
-// backend/routes/adminUserRoutes.js
+// backend/routes/adminUserRoutes.j
 const express = require('express');
 const bcrypt = require('bcrypt');
 const router = express.Router();
