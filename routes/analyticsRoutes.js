@@ -1,8 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../config/db');
-
-// FIXED: Using the exact exported name from your authMiddleware
 const { authenticateAdmin } = require('../middleware/authMiddleware');
 
 router.get('/kpis', authenticateAdmin, async (req, res) => {
@@ -15,7 +13,7 @@ router.get('/kpis', authenticateAdmin, async (req, res) => {
     const [salesData] = await db.execute(`
       SELECT DATE(created_at) as period,
         COUNT(*) as orders,
-        SUM(CASE WHEN status != 'cancelled' THEN total_amount ELSE 0 END) as revenue
+        SUM(CASE WHEN status != 'cancelled' THEN total ELSE 0 END) as revenue
       FROM orders
       WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
       GROUP BY DATE(created_at)
@@ -25,7 +23,7 @@ router.get('/kpis', authenticateAdmin, async (req, res) => {
     const [totalStats] = await db.execute(`
       SELECT 
         COUNT(*) as totalOrders,
-        SUM(CASE WHEN status != 'cancelled' THEN total_amount ELSE 0 END) as totalRevenue
+        SUM(CASE WHEN status != 'cancelled' THEN total ELSE 0 END) as totalRevenue
       FROM orders
       WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
     `, [days]);
