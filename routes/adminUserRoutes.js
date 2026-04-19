@@ -1,4 +1,3 @@
-// backend/routes/adminUserRoutes.j
 const express = require('express');
 const bcrypt = require('bcrypt');
 const router = express.Router();
@@ -10,14 +9,12 @@ const {
   getUserByEmail, 
   updateUserStatus, 
   updateUserPassword, 
-  deleteUser 
+  deleteUser,
+  saveResetOtp
 } = require('../models/userModel');
 const { getAllOrders, updateOrderStatus, getOrderById } = require('../models/orderModel');
 const { sendMail } = require('../utils/mail');
 
-// --- DASHBOARD ---
-
-// GET /api/admin/dashboard
 router.get('/dashboard', authenticateAdmin, async (req, res) => {
   try {
     const [orderStats] = await db.query('SELECT COUNT(*) as totalOrders, SUM(total) as totalRevenue FROM orders WHERE status != "cancelled"');
@@ -38,9 +35,6 @@ router.get('/dashboard', authenticateAdmin, async (req, res) => {
   }
 });
 
-// --- USERS ---
-
-// GET /api/admin/users
 router.get('/users', authenticateAdmin, async (req, res) => {
   try {
     const users = await getAllUsers();
@@ -50,7 +44,6 @@ router.get('/users', authenticateAdmin, async (req, res) => {
   }
 });
 
-// GET /api/admin/users/:id
 router.get('/users/:id', authenticateAdmin, async (req, res) => {
   try {
     const user = await getUserById(req.params.id);
@@ -61,7 +54,6 @@ router.get('/users/:id', authenticateAdmin, async (req, res) => {
   }
 });
 
-// PUT /api/admin/users/:id/status
 router.put('/users/:id/status', authenticateAdmin, async (req, res) => {
   try {
     const { status } = req.body;
@@ -72,7 +64,6 @@ router.put('/users/:id/status', authenticateAdmin, async (req, res) => {
   }
 });
 
-// POST /api/admin/users/:id/reset-password
 router.post('/users/:id/reset-password', authenticateAdmin, async (req, res) => {
   try {
     const user = await getUserById(req.params.id);
@@ -88,7 +79,6 @@ router.post('/users/:id/reset-password', authenticateAdmin, async (req, res) => 
       return res.json({ message: `Password for ${user.email} has been reset.` });
     }
 
-    const { saveResetOtp } = require('../models/userModel');
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = Date.now() + 15 * 60 * 1000;
     await saveResetOtp(user.id, otp, expiresAt);
@@ -107,7 +97,6 @@ router.post('/users/:id/reset-password', authenticateAdmin, async (req, res) => 
   }
 });
 
-// DELETE /api/admin/users/:id
 router.delete('/users/:id', authenticateAdmin, async (req, res) => {
   try {
     await deleteUser(req.params.id);
@@ -117,9 +106,6 @@ router.delete('/users/:id', authenticateAdmin, async (req, res) => {
   }
 });
 
-// --- ORDERS ---
-
-// GET /api/admin/orders
 router.get('/orders', authenticateAdmin, async (req, res) => {
   try {
     const orders = await getAllOrders();
@@ -129,7 +115,6 @@ router.get('/orders', authenticateAdmin, async (req, res) => {
   }
 });
 
-// GET /api/admin/orders/:id
 router.get('/orders/:id', authenticateAdmin, async (req, res) => {
   try {
     const order = await getOrderById(req.params.id);
@@ -140,7 +125,6 @@ router.get('/orders/:id', authenticateAdmin, async (req, res) => {
   }
 });
 
-// PUT /api/admin/orders/:id/status
 router.put('/orders/:id/status', authenticateAdmin, async (req, res) => {
   try {
     const { status, tracking_number, courier } = req.body;
@@ -149,7 +133,6 @@ router.put('/orders/:id/status', authenticateAdmin, async (req, res) => {
       return res.status(400).json({ message: 'Invalid status' });
     }
 
-    // Update status and tracking info
     let sql = 'UPDATE orders SET status = ?';
     let params = [status];
 
@@ -167,10 +150,7 @@ router.put('/orders/:id/status', authenticateAdmin, async (req, res) => {
 
     await db.query(sql, params);
 
-    // If cancelled/returned, restock is handled by updateOrderStatus in model if we use it
-    // But here we are doing direct query. Let's call the model function for status if needed.
     if (status === 'cancelled' || status === 'returned') {
-       const { updateOrderStatus } = require('../models/orderModel');
        await updateOrderStatus(req.params.id, status);
     }
 
@@ -181,7 +161,6 @@ router.put('/orders/:id/status', authenticateAdmin, async (req, res) => {
   }
 });
 
-// GET /api/admin/orders/export/csv
 router.get('/orders/export/csv', authenticateAdmin, async (req, res) => {
   try {
     const orders = await getAllOrders();
@@ -194,11 +173,9 @@ router.get('/orders/export/csv', authenticateAdmin, async (req, res) => {
       o.created_at || ''
     ]);
     
-    let csv = headers.join(',') + '
-';
+    let csv = headers.join(',') + '\n';
     rows.forEach(row => {
-      csv += row.join(',') + '
-';
+      csv += row.join(',') + '\n';
     });
 
     res.setHeader('Content-Type', 'text/csv');
