@@ -20,7 +20,6 @@ const createReviewTable = async () => {
   `);
 };
 
-// Sync product rating and review coun
 const syncProductStats = async (productId) => {
   await pool.query(`
     UPDATE products p
@@ -44,7 +43,7 @@ const getReviewsByProduct = async (productId, approvedOnly = true) => {
   const [rows] = await pool.query(
     `SELECT r.*, u.name as user_name FROM reviews r
     JOIN users u ON r.user_id = u.id
-    WHERE r.product_id = ? \${whereClause}
+    WHERE r.product_id = ? ${whereClause}
     ORDER BY r.created_at DESC`,
     [productId]
   );
@@ -63,10 +62,10 @@ const getProductRatingSummary = async (productId) => {
 };
 
 const getAllReviews = async (approved = null) => {
-  let query = \`SELECT r.*, u.name as user_name, p.name as product_name
+  let query = `SELECT r.*, u.name as user_name, p.name as product_name
     FROM reviews r
     JOIN users u ON r.user_id = u.id
-    JOIN products p ON r.product_id = p.id\`;
+    JOIN products p ON r.product_id = p.id`;
   const params = [];
   if (approved !== null) { query += ' WHERE r.is_approved = ?'; params.push(approved); }
   query += ' ORDER BY r.created_at DESC';
