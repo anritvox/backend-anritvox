@@ -12,7 +12,8 @@ const {
 
 // GET /api/cart - get current user's cart
 router.get('/', authenticateUser, async (req, res) => {
-  try {
+  try { 
+
     const { items, total } = await getCartTotal(req.user.id);
     return res.json({ items: items || [], total: total || 0 });
   } catch (err) {
