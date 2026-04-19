@@ -18,7 +18,7 @@ const createUsersTable = async () => {
     )
   `);
 };
-// We export this to be controlled by server.js initialization, removing standalone catch to prevent race conditions.
+// We export this to be controlled by server.js initialization, removing standalone catch to prevent race condition
 
 const createUser = async ({ name, email, password, phone }) => {
   const hash = await bcrypt.hash(password, 10);
