@@ -3,15 +3,33 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const pool = require('../config/db');
 
+// Import Rate Limiters
+const { registerLimiter, loginLimiter } = require('../middleware/rateLimiter');
+
 // Import BOTH Admin and Customer Models (Aliasing verifyPassword to prevent conflicts)
-const { getAdminByEmail, getAdminById, verifyPassword: verifyAdminPassword, updateAdminPassword } = require("../models/adminModel");
-const { createUser, getUserByEmail, getUserById, verifyPassword: verifyCustomerPassword } = require("../models/userModel");
+const { 
+  getAdminByEmail, 
+  getAdminById, 
+  verifyPassword: verifyAdminPassword, 
+  updateAdminPassword 
+} = require("../models/adminModel");
+
+const { 
+  createUser, 
+  getUserByEmail, 
+  getUserById, 
+  verifyPassword: verifyCustomerPassword 
+} = require("../models/userModel");
+
 const { authenticateAdmin } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
-// POST /api/auth/register (Standard Customer Registration)
-router.post("/register", async (req, res) => {
+/**
+ * @route   POST /api/auth/register
+ * @desc    Standard Customer Registration with Rate Limiting
+ */
+router.post("/register", registerLimiter, async (req, res) => {
   try {
     const { name, email, password, phone } = req.body;
     if (!name || !email || !password) {
@@ -36,15 +54,21 @@ router.post("/register", async (req, res) => {
     );
 
     // Return unified user object
-    res.status(201).json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
+    res.status(201).json({ 
+      token, 
+      user: { id: user.id, name: user.name, email: user.email, role: user.role } 
+    });
   } catch (err) {
     console.error("Register error:", err);
     res.status(500).json({ message: "Server error during registration" });
   }
 });
 
-// POST /api/auth/login (Smart Login: Handles BOTH Customers and Admins)
-router.post("/login", async (req, res) => {
+/**
+ * @route   POST /api/auth/login
+ * @desc    Smart Login (Customer/Admin) with Brute-Force Protection
+ */
+router.post("/login", loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
@@ -61,13 +85,16 @@ router.post("/login", async (req, res) => {
           process.env.JWT_SECRET,
           { expiresIn: "7d" }
         );
-        return res.json({ token, user: { id: customer.id, name: customer.name, email: customer.email, role: customer.role } });
+        return res.json({ 
+          token, 
+          user: { id: customer.id, name: customer.name, email: customer.email, role: customer.role } 
+        });
       } else {
         return res.status(401).json({ message: "Invalid credentials" });
       }
     }
 
-    // STEP 2: Fallback - Attempt Admin Login if customer email wasn't found
+    // STEP 2: Fallback - Attempt Admin Login
     const admin = await getAdminByEmail(email);
     if (admin) {
       const validAdmin = await verifyAdminPassword(password, admin.password_hash);
@@ -77,12 +104,14 @@ router.post("/login", async (req, res) => {
           process.env.JWT_SECRET,
           { expiresIn: "7d" }
         );
-        // Map admin data to "user" payload so frontend context parses it flawlessly
-        return res.json({ token, user: { id: admin.id, email: admin.email, role: "admin" } });
+        return res.json({ 
+          token, 
+          user: { id: admin.id, email: admin.email, role: "admin" } 
+        });
       }
     }
 
-    // STEP 3: If completely not found in either table
+    // STEP 3: If completely not found
     return res.status(401).json({ message: "Invalid credentials" });
 
   } catch (err) {
@@ -91,7 +120,10 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// GET /api/auth/me (Verify admin token + return full profile)
+/**
+ * @route   GET /api/auth/me
+ * @desc    Verify admin token + return profile
+ */
 router.get("/me", authenticateAdmin, async (req, res) => {
   try {
     const admin = await getAdminById(req.admin.id);
@@ -102,13 +134,15 @@ router.get("/me", authenticateAdmin, async (req, res) => {
   }
 });
 
-// PUT /api/auth/me (Update admin profile - email)
+/**
+ * @route   PUT /api/auth/me
+ * @desc    Update admin profile (Email)
+ */
 router.put("/me", authenticateAdmin, async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ message: "Email is required" });
     
-    // Check for duplicate email to prevent database crash
     const [existing] = await pool.query('SELECT id FROM admin_users WHERE email = ? AND id != ?', [email, req.admin.id]);
     if (existing.length > 0) {
       return res.status(409).json({ message: "This email is already registered to another admin." });
@@ -122,7 +156,10 @@ router.put("/me", authenticateAdmin, async (req, res) => {
   }
 });
 
-// POST /api/auth/change-password (Admin must be logged in)
+/**
+ * @route   POST /api/auth/change-password
+ * @desc    Secure Admin password update
+ */
 router.post("/change-password", authenticateAdmin, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
