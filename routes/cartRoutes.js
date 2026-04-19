@@ -13,11 +13,10 @@ const {
 // GET /api/cart - get current user's cart
 router.get('/', authenticateUser, async (req, res) => {
   try { 
-
     const { items, total } = await getCartTotal(req.user.id);
     return res.json({ items: items || [], total: total || 0 });
   } catch (err) {
-    console.error(\"GET /api/cart Error:\", err);
+    console.error("GET /api/cart Error:", err);
     return res.status(500).json({ message: 'Failed to load cart' });
   }
 });
@@ -43,7 +42,7 @@ router.post('/', authenticateUser, async (req, res) => {
     const total = items.reduce((s, i) => s + (parseFloat(i.subtotal) || 0), 0);
     return res.json({ items, total: parseFloat(total.toFixed(2)) });
   } catch (err) {
-    console.error(\"POST /api/cart Error:\", err);
+    console.error("POST /api/cart Error:", err);
     const status = err.status || 500;
     return res.status(status).json({ 
         message: err.message || 'Failed to update cart',
@@ -59,7 +58,7 @@ router.delete('/:productId', authenticateUser, async (req, res) => {
     const total = (items || []).reduce((s, i) => s + (parseFloat(i.subtotal) || 0), 0);
     return res.json({ items: items || [], total: parseFloat(total.toFixed(2)) });
   } catch (err) {
-    console.error(\"DELETE /api/cart/:id Error:\", err);
+    console.error("DELETE /api/cart/:id Error:", err);
     return res.status(500).json({ message: 'Failed to remove item' });
   }
 });
@@ -70,7 +69,7 @@ router.delete('/', authenticateUser, async (req, res) => {
     await clearCart(req.user.id);
     return res.json({ items: [], total: 0 });
   } catch (err) {
-    console.error(\"DELETE /api/cart Error:\", err);
+    console.error("DELETE /api/cart Error:", err);
     return res.status(500).json({ message: 'Failed to clear cart' });
   }
 });
