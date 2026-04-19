@@ -20,7 +20,7 @@ const createReviewTable = async () => {
   `);
 };
 
-// Sync product rating and review count
+// Sync product rating and review coun
 const syncProductStats = async (productId) => {
   await pool.query(`
     UPDATE products p
