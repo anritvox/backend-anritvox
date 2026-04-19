@@ -9,7 +9,9 @@ const { createNotification, getNotificationsForUser, markAsRead, countUnread, ge
 router.get('/', authenticateUser, async (req, res) => {
   try {
     const notifications = await getNotificationsForUser(req.user.id);
-    res.json(notifications);
+    // Normalize field: map is_read -> read for frontend compatibility
+    const normalized = notifications.map(n => ({ ...n, read: !!n.is_read, _id: String(n.id) }));
+    res.json(normalized);
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: 'Failed to get notifications' });
@@ -27,7 +29,18 @@ router.get('/unread-count', authenticateUser, async (req, res) => {
   }
 });
 
-// PUT /api/notifications/mark-read - user: mark all as read
+// PUT /api/notifications/read-all - mark all as read (frontend alias)
+router.put('/read-all', authenticateUser, async (req, res) => {
+  try {
+    await markAsRead(req.user.id);
+    res.json({ message: 'All notifications marked as read' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to mark as read' });
+  }
+});
+
+// PUT /api/notifications/mark-read - legacy alias
 router.put('/mark-read', authenticateUser, async (req, res) => {
   try {
     await markAsRead(req.user.id);
@@ -38,7 +51,18 @@ router.put('/mark-read', authenticateUser, async (req, res) => {
   }
 });
 
-// PUT /api/notifications/:id/mark-read - user: mark one as read
+// PUT /api/notifications/:id/read - mark one as read (frontend alias)
+router.put('/:id/read', authenticateUser, async (req, res) => {
+  try {
+    await markAsRead(req.user.id, req.params.id);
+    res.json({ message: 'Notification marked as read' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to mark as read' });
+  }
+});
+
+// PUT /api/notifications/:id/mark-read - legacy alias
 router.put('/:id/mark-read', authenticateUser, async (req, res) => {
   try {
     await markAsRead(req.user.id, req.params.id);
@@ -60,12 +84,10 @@ router.get('/admin/all', authenticateAdmin, async (req, res) => {
   }
 });
 
-// POST /api/notifications/admin - admin: create notification
-router.post('/admin', authenticateAdmin, async (req, res) => {
+// POST /api/notifications/admin/create - admin: create notification
+router.post('/admin/create', authenticateAdmin, async (req, res) => {
   try {
-    const { user_id, title, message, type, is_global } = req.body;
-    if (!title || !message) return res.status(400).json({ message: 'title and message are required' });
-    const id = await createNotification({ user_id, title, message, type, is_global });
+    const id = await createNotification(req.body);
     res.status(201).json({ message: 'Notification created', id });
   } catch (err) {
     console.error(err);
@@ -73,10 +95,10 @@ router.post('/admin', authenticateAdmin, async (req, res) => {
   }
 });
 
-// DELETE /api/notifications/admin/:id - admin: delete notification
-router.delete('/admin/:id', authenticateAdmin, async (req, res) => {
+// DELETE /api/notifications/:id - delete a notification
+router.delete('/:id', authenticateUser, async (req, res) => {
   try {
-    await deleteNotification(req.params.id);
+    await deleteNotification(req.params.id, req.user.id);
     res.json({ message: 'Notification deleted' });
   } catch (err) {
     console.error(err);
