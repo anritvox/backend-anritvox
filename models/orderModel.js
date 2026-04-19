@@ -2,7 +2,7 @@ const pool = require('../config/db');
 
 const createOrdersTables = async () => {
   try {
-    // 1. Create the base tables (if they don't exist at al
+    // 1. Create the base tables (if they don't exist at all)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS orders (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -32,13 +32,13 @@ const createOrdersTables = async () => {
     // 2. Robust Migration Logic
     const addCol = async (table, column, definition) => {
       try {
-        const [cols] = await pool.query(`SHOW COLUMNS FROM \`\${table}\` LIKE '\${column}'`);
+        const [cols] = await pool.query(`SHOW COLUMNS FROM \`${table}\` LIKE '${column}'`);
         if (cols.length === 0) {
-          await pool.query(`ALTER TABLE \`\${table}\` ADD COLUMN \`\${column}\` \${definition}`);
-          console.log(`Added \${column} to \${table}`);
+          await pool.query(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${definition}`);
+          console.log(`Added ${column} to ${table}`);
         }
       } catch (err) {
-        console.error(`Error adding \${column} to \${table}:`, err.message);
+        console.error(`Error adding ${column} to ${table}:`, err.message);
       }
     };
 
@@ -89,11 +89,11 @@ const createOrder = async ({
       );
       const dbProduct = dbProducts[0];
 
-      if (!dbProduct) throw new Error(`Product ID \${productId} not found.`);
+      if (!dbProduct) throw new Error(`Product ID ${productId} not found.`);
 
       const requestedQty = parseInt(item.quantity || 1, 10);
       if (dbProduct.quantity < requestedQty) {
-        throw new Error(`Insufficient stock for \${dbProduct.name}. Only \${dbProduct.quantity} left.`);
+        throw new Error(`Insufficient stock for ${dbProduct.name}. Only ${dbProduct.quantity} left.`);
       }
 
       const unitPrice = (dbProduct.discount_price && dbProduct.discount_price > 0) ? dbProduct.discount_price : dbProduct.price;
@@ -121,8 +121,8 @@ const createOrder = async ({
 
     // Step 4: Insert the Order
     const [res] = await conn.query(
-      \`INSERT INTO orders (user_id, subtotal, discount, total, coupon_code, address_snapshot, delivery_type, payment_mode, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)\`,
+      `INSERT INTO orders (user_id, subtotal, discount, total, coupon_code, address_snapshot, delivery_type, payment_mode, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
         backendSubtotal,
@@ -141,8 +141,8 @@ const createOrder = async ({
     // Step 5: Insert Order Items
     for (const pItem of processedItems) {
       await conn.query(
-        \`INSERT INTO order_items (order_id, product_id, name, sku, price, quantity, image)
-         VALUES (?, ?, ?, ?, ?, ?, ?)\`,
+        `INSERT INTO order_items (order_id, product_id, name, sku, price, quantity, image)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [orderId, pItem.product_id, pItem.name, pItem.sku, pItem.price, pItem.quantity, pItem.image]
       );
     }
