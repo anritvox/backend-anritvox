@@ -2,7 +2,7 @@ const pool = require('../config/db');
 
 const createOrdersTables = async () => {
   try {
-    // 1. Create the base tables (if they don't exist at all)
+    // 1. Create the base tables (if they don't exist at al
     await pool.query(`
       CREATE TABLE IF NOT EXISTS orders (
         id INT AUTO_INCREMENT PRIMARY KEY,
