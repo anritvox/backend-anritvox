@@ -1,21 +1,44 @@
 // backend/routes/adminUserRoutes.js
-// Admin: full CRUD for users + view/update orders + reset user password
 const express = require('express');
 const bcrypt = require('bcrypt');
 const router = express.Router();
+const db = require('../config/db');
 const { authenticateAdmin } = require('../middleware/authMiddleware');
-const {
-  getAllUsers,
-  getUserById,
-  getUserByEmail,
-  updateUserStatus,
-  updateUserPassword,
-  deleteUser,
+const { 
+  getAllUsers, 
+  getUserById, 
+  getUserByEmail, 
+  updateUserStatus, 
+  updateUserPassword, 
+  deleteUser 
 } = require('../models/userModel');
 const { getAllOrders, updateOrderStatus, getOrderById } = require('../models/orderModel');
 const { sendMail } = require('../utils/mail');
 
-// ─── USERS ───────────────────────────────────────────────────────────
+// --- DASHBOARD ---
+
+// GET /api/admin/dashboard
+router.get('/dashboard', authenticateAdmin, async (req, res) => {
+  try {
+    const [orderStats] = await db.query('SELECT COUNT(*) as totalOrders, SUM(total) as totalRevenue FROM orders WHERE status != "cancelled"');
+    const [userStats] = await db.query('SELECT COUNT(*) as totalUsers FROM users');
+    const [productStats] = await db.query('SELECT COUNT(*) as totalProducts FROM products');
+    const [pendingStats] = await db.query('SELECT COUNT(*) as pendingOrders FROM orders WHERE status = "pending"');
+
+    res.json({
+      totalOrders: orderStats[0].totalOrders || 0,
+      totalRevenue: orderStats[0].totalRevenue || 0,
+      totalUsers: userStats[0].totalUsers || 0,
+      totalProducts: productStats[0].totalProducts || 0,
+      pendingOrders: pendingStats[0].pendingOrders || 0
+    });
+  } catch (err) {
+    console.error("Dashboard Stats Error:", err);
+    res.status(500).json({ message: 'Failed to load dashboard stats' });
+  }
+});
+
+// --- USERS ---
 
 // GET /api/admin/users
 router.get('/users', authenticateAdmin, async (req, res) => {
@@ -38,10 +61,11 @@ router.get('/users/:id', authenticateAdmin, async (req, res) => {
   }
 });
 
-// PUT /api/admin/users/:id/status { is_active: 0|1 }
+// PUT /api/admin/users/:id/status
 router.put('/users/:id/status', authenticateAdmin, async (req, res) => {
   try {
-    await updateUserStatus(req.params.id, req.body.is_active);
+    const { status } = req.body;
+    await updateUserStatus(req.params.id, status);
     return res.json({ message: 'User status updated' });
   } catch (err) {
     return res.status(500).json({ message: 'Failed to update user status' });
@@ -53,6 +77,7 @@ router.post('/users/:id/reset-password', authenticateAdmin, async (req, res) => 
   try {
     const user = await getUserById(req.params.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
+
     const { newPassword } = req.body;
     if (newPassword) {
       if (newPassword.length < 6) {
@@ -62,16 +87,19 @@ router.post('/users/:id/reset-password', authenticateAdmin, async (req, res) => 
       await updateUserPassword(user.id, hash);
       return res.json({ message: `Password for ${user.email} has been reset.` });
     }
+
     const { saveResetOtp } = require('../models/userModel');
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiresAt = Date.now() + 15 * 60 * 1000;
     await saveResetOtp(user.id, otp, expiresAt);
+
     await sendMail({
       to: user.email,
       subject: 'Your Anritvox Password Reset OTP',
       html: `<p>An administrator has triggered a password reset for your account.</p><p>Your OTP is: <strong>${otp}</strong></p><p>It expires in 15 minutes.</p>`,
       text: `Admin triggered reset. OTP: ${otp}. Expires in 15 minutes.`,
     });
+
     return res.json({ message: `Password reset OTP sent to ${user.email}.` });
   } catch (err) {
     console.error('Admin reset-password error:', err);
@@ -89,7 +117,7 @@ router.delete('/users/:id', authenticateAdmin, async (req, res) => {
   }
 });
 
-// ─── ORDERS ───────────────────────────────────────────────────────────
+// --- ORDERS ---
 
 // GET /api/admin/orders
 router.get('/orders', authenticateAdmin, async (req, res) => {
@@ -112,80 +140,72 @@ router.get('/orders/:id', authenticateAdmin, async (req, res) => {
   }
 });
 
-// PUT /api/admin/orders/:id/status { status: 'shipped' }
+// PUT /api/admin/orders/:id/status
 router.put('/orders/:id/status', authenticateAdmin, async (req, res) => {
   try {
+    const { status, tracking_number, courier } = req.body;
     const validStatuses = ['pending', 'confirmed', 'packed', 'shipped', 'delivered', 'cancelled', 'returned'];
-    if (!validStatuses.includes(req.body.status)) {
+    if (!validStatuses.includes(status)) {
       return res.status(400).json({ message: 'Invalid status' });
     }
-    await updateOrderStatus(req.params.id, req.body.status);
-    return res.json({ message: 'Order status updated' });
+
+    // Update status and tracking info
+    let sql = 'UPDATE orders SET status = ?';
+    let params = [status];
+
+    if (tracking_number !== undefined) {
+      sql += ', tracking_number = ?';
+      params.push(tracking_number);
+    }
+    if (courier !== undefined) {
+      sql += ', courier = ?';
+      params.push(courier);
+    }
+
+    sql += ' WHERE id = ?';
+    params.push(req.params.id);
+
+    await db.query(sql, params);
+
+    // If cancelled/returned, restock is handled by updateOrderStatus in model if we use it
+    // But here we are doing direct query. Let's call the model function for status if needed.
+    if (status === 'cancelled' || status === 'returned') {
+       const { updateOrderStatus } = require('../models/orderModel');
+       await updateOrderStatus(req.params.id, status);
+    }
+
+    return res.json({ message: 'Order updated successfully' });
   } catch (err) {
-    return res.status(500).json({ message: 'Failed to update order status' });
+    console.error("Update Order Error:", err);
+    return res.status(500).json({ message: 'Failed to update order' });
   }
 });
 
-// GET /api/admin/orders/export/csv - Export orders as CSV
+// GET /api/admin/orders/export/csv
 router.get('/orders/export/csv', authenticateAdmin, async (req, res) => {
   try {
     const orders = await getAllOrders();
     const headers = ['ID', 'Status', 'Total', 'Customer Email', 'Created'];
-    // Changed total_amount to total
     const rows = orders.map(o => [
-      o.id, o.status, o.total || 0, o.email || '', o.created_at || ''
+      o.id,
+      o.status,
+      o.total || 0,
+      o.user_email || '',
+      o.created_at || ''
     ]);
-    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    
+    let csv = headers.join(',') + '
+';
+    rows.forEach(row => {
+      csv += row.join(',') + '
+';
+    });
+
     res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', 'attachment; filename="orders.csv"');
-    return res.send(csv);
+    res.setHeader('Content-Disposition', 'attachment; filename=orders.csv');
+    return res.status(200).send(csv);
   } catch (err) {
-    return res.status(500).json({ message: 'Export failed' });
-  }
-});
-
-// GET /api/admin/dashboard - Dashboard summary stats
-router.get('/dashboard', authenticateAdmin, async (req, res) => {
-  try {
-    const pool = require('../config/db');
-    const [[{ totalOrders }]] = await pool.query('SELECT COUNT(*) as totalOrders FROM orders');
-    // Changed total_amount to total
-    const [[{ totalRevenue }]] = await pool.query('SELECT COALESCE(SUM(total), 0) as totalRevenue FROM orders WHERE status != "cancelled"');
-    const [[{ totalUsers }]] = await pool.query('SELECT COUNT(*) as totalUsers FROM users');
-    const [[{ totalProducts }]] = await pool.query('SELECT COUNT(*) as totalProducts FROM products WHERE status = "active"');
-    const [[{ pendingOrders }]] = await pool.query('SELECT COUNT(*) as pendingOrders FROM orders WHERE status = "pending"');
-    return res.json({ totalOrders, totalRevenue: parseFloat(totalRevenue), totalUsers, totalProducts, pendingOrders });
-  } catch (err) {
-    console.error('Dashboard stats error:', err);
-    return res.status(500).json({ message: 'Failed to load stats' });
-  }
-});
-
-// POST /api/admin/orders/bulk-status - Bulk update order status
-router.post('/orders/bulk-status', authenticateAdmin, async (req, res) => {
-  try {
-    const { orderIds, status } = req.body;
-    const validStatuses = ['pending', 'confirmed', 'packed', 'shipped', 'delivered', 'cancelled'];
-    if (!validStatuses.includes(status)) return res.status(400).json({ message: 'Invalid status' });
-    if (!Array.isArray(orderIds) || orderIds.length === 0) return res.status(400).json({ message: 'No order IDs provided' });
-    const pool = require('../config/db');
-    await pool.query('UPDATE orders SET status = ?, updated_at = NOW() WHERE id IN (?)', [status, orderIds]);
-    return res.json({ message: `${orderIds.length} orders updated to ${status}` });
-  } catch (err) {
-    return res.status(500).json({ message: 'Bulk update failed' });
-  }
-});
-
-// GET /api/admin/customers/segments - Customer segmentation
-router.get('/customers/segments', authenticateAdmin, async (req, res) => {
-  try {
-    const pool = require('../config/db');
-    // Changed total_amount to total
-    const [vip] = await pool.query('SELECT u.id, u.name, u.email, COUNT(o.id) as order_count, SUM(o.total) as total_spent FROM users u LEFT JOIN orders o ON u.id = o.user_id GROUP BY u.id HAVING order_count >= 5 ORDER BY total_spent DESC LIMIT 50');
-    const [newCustomers] = await pool.query('SELECT u.id, u.name, u.email, u.created_at FROM users u WHERE u.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) ORDER BY u.created_at DESC LIMIT 50');
-    return res.json({ vip, newCustomers });
-  } catch (err) {
-    return res.status(500).json({ message: 'Failed to load segments' });
+    return res.status(500).json({ message: 'Failed to export orders' });
   }
 });
 
