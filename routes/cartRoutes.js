@@ -1,4 +1,4 @@
-// Cart: add, update, remove, clear, get - all require user auth
+// Cart: add, update, remove, clear, get - all require user aut
 const express = require('express');
 const router = express.Router();
 const { authenticateUser } = require('../middleware/authMiddleware');
