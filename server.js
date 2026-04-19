@@ -4,7 +4,6 @@ const cors = require("cors");
 const pool = require("./config/db");
 const path = require("path");
 
-// Route Imports
 const categoryRoutes = require("./routes/categoryRoutes");
 const subcategoryRoutes = require("./routes/subcategoryRoutes");
 const productRoutes = require("./routes/productRoutes");
@@ -28,7 +27,6 @@ const returnRoutes = require("./routes/returnRoutes");
 const inventoryRoutes = require("./routes/inventoryRoutes");
 const bannerRoutes = require("./routes/bannerRoutes");
 
-// Model Initializers
 const { createBannerTable } = require("./models/bannerModel");
 const { createCartTable } = require("./models/cartModel");
 const { createOrdersTables } = require("./models/orderModel");
@@ -37,6 +35,9 @@ const { initProductsTable } = require("./models/productModel");
 const { initCategoriesTable } = require("./models/categoryModel");
 
 const app = express();
+
+app.set("trust proxy", 1);
+
 app.use(express.json({ limit: '10mb' }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
