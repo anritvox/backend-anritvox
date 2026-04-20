@@ -69,10 +69,12 @@ const validateSerial = async (serial) => {
             ps.base_warranty_months, ps.is_legacy,
             p.name AS product_name, p.brand, p.warranty_period,
             p.video_urls, p.product_links, p.model_3d_url, 
-            c.id AS category_id, c.name AS category_name
+            c.id AS category_id, c.name AS category_name,
+            wr.id AS registration_id, wr.user_name, wr.warranty_end_date, wr.shop_name
      FROM product_serials ps
      JOIN products p ON ps.product_id = p.id
      JOIN categories c ON p.category_id = c.id
+     LEFT JOIN warranty_registrations wr ON ps.serial_number = wr.registered_serial
      WHERE ps.serial_number = ?`,
     [s]
   ); 
