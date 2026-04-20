@@ -36,6 +36,7 @@ const { initCategoriesTable } = require("./models/categoryModel");
 
 const app = express();
 
+// FIXED: Restore proxy trust so Railway IPs don't break the rate limiter
 app.set("trust proxy", 1);
 
 app.use(express.json({ limit: '10mb' }));
