@@ -1,11 +1,9 @@
-// backend/models/warrantyModel.js
 const pool = require("../config/db");
 require('dotenv').config();
+
 const CLOUDFRONT_BASE_URL = process.env.CLOUDFRONT_BASE_URL || "";
 
-// ─── IST helper ───────────────────────────────────────────────────
 const getISTDateString = () => {
-  // Returns today's date as YYYY-MM-DD in IST (UTC+5:30)
   const now = new Date();
   const istOffset = 5.5 * 60 * 60 * 1000;
   const istDate = new Date(now.getTime() + istOffset);
@@ -13,7 +11,6 @@ const getISTDateString = () => {
 };
 
 const daysDiff = (dateStrA, dateStrB) => {
-  // dateStrA - dateStrB in whole days (positive means A is later)
   const a = new Date(dateStrA);
   const b = new Date(dateStrB);
   return Math.round((a - b) / (1000 * 60 * 60 * 24));
@@ -44,7 +41,6 @@ const initWarrantyTable = async () => {
     try { await pool.query(`ALTER TABLE ${table} ADD COLUMN ${sql}`); } catch (e) {}
   };
 
-  // Original columns (preserved for backward compatibility)
   await addCol('warranty_registrations', 'serial_number_id INT AFTER registered_serial');
   await addCol('warranty_registrations', 'user_name VARCHAR(255) AFTER product_id');
   await addCol('warranty_registrations', 'user_email VARCHAR(255) AFTER user_name');
@@ -52,8 +48,6 @@ const initWarrantyTable = async () => {
   await addCol('warranty_registrations', 'purchase_date DATE AFTER user_phone');
   await addCol('warranty_registrations', 'invoice_number VARCHAR(100) AFTER purchase_date');
   await addCol('warranty_registrations', 'shop_name VARCHAR(255) AFTER invoice_number');
-
-  // NEW columns for e-warranty policy
   await addCol('warranty_registrations', 'registration_date DATE NULL DEFAULT NULL AFTER shop_name');
   await addCol('warranty_registrations', 'warranty_end_date DATE NULL DEFAULT NULL AFTER registration_date');
   await addCol('warranty_registrations', 'invoice_url VARCHAR(500) NULL DEFAULT NULL AFTER warranty_end_date');
@@ -103,7 +97,6 @@ const registerWarranty = async (data) => {
   if (rec.status === 'registered' || rec.status === 'sold')
     throw { status: 400, message: "This serial number is already registered for warranty." };
 
-  // ─── NEW-POLICY 14-DAY VALIDATION (only for non-legacy serials) ──────────
   const isLegacySerial = rec.is_legacy === 1 || rec.is_legacy === true;
   let registrationDate = null;
   let warrantyEndDate = null;
@@ -111,14 +104,11 @@ const registerWarranty = async (data) => {
   if (!isLegacySerial) {
     if (!purchaseDate) throw { status: 400, message: "Purchase date is required for e-warranty registration." };
 
-    // Server-side IST date - never trust client time
     registrationDate = getISTDateString();
     const diff = daysDiff(registrationDate, purchaseDate);
 
-    // Reject future purchase dates
     if (diff < 0) throw { status: 400, message: "Purchase date cannot be in the future." };
 
-    // THE 14-DAY RULE
     if (diff > 14) {
       throw {
         status: 400,
@@ -126,8 +116,7 @@ const registerWarranty = async (data) => {
       };
     }
 
-    // PASSED: calculate warranty_end_date = purchase_date + base_warranty_months + 1 bonus month
-    const totalMonths = (rec.base_warranty_months || 12) + 1;
+    const totalMonths = (rec.base_warranty_months || rec.warranty_period || 12) + 1;
     warrantyEndDate = addMonths(purchaseDate, totalMonths);
   }
 
