@@ -64,7 +64,7 @@ const validateSerial = async (serial) => {
             p.name AS product_name, p.brand, p.warranty_period,
             p.video_urls, p.product_links, p.model_3d_url, 
             c.id AS category_id, c.name AS category_name,
-            wr.id AS registration_id, wr.user_name, wr.warranty_end_date, wr.shop_name
+            wr.id AS registration_id, wr.user_name, wr.warranty_end_date, wr.shop_name, wr.purchase_date
      FROM product_serials ps
      JOIN products p ON ps.product_id = p.id
      JOIN categories c ON p.category_id = c.id
@@ -76,7 +76,10 @@ const validateSerial = async (serial) => {
   if (rows.length === 0) throw { status: 404, message: "Serial number not found in our database." };
   const rec = rows[0];
   const [imageRows] = await pool.query('SELECT file_path FROM product_images WHERE product_id = ?', [rec.product_id]);
-  rec.images = imageRows.map((img) => `${CLOUDFRONT_BASE_URL}/${img.file_path}`);
+  
+  const cloudfront = process.env.CLOUDFRONT_BASE_URL || '';
+  rec.images = imageRows.map((img) => cloudfront ? `${cloudfront}/${img.file_path}` : img.file_path);
+  
   return rec;
 };
 
