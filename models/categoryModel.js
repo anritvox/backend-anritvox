@@ -1,7 +1,6 @@
-// backend/models/categoryModel.js
 const pool = require('../config/db');
 
-// Helper: add column if it doesn't exist (MySQL 5.7 compatible)
+// Helper: add column if it doesn't exist
 const addColumnIfMissing = async (table, column, definition) => {
   const [cols] = await pool.query(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS
@@ -31,7 +30,6 @@ const initCategoriesTable = async () => {
   await addColumnIfMissing('categories', 'image_url', 'VARCHAR(500) AFTER description');
   await addColumnIfMissing('categories', 'is_active', 'TINYINT(1) DEFAULT 1 AFTER image_url');
 };
-initCategoriesTable().catch(console.error);
 
 const getAllCategories = async () => {
   const [rows] = await pool.query(
@@ -73,4 +71,5 @@ module.exports = {
   createCategory,
   updateCategory,
   deleteCategory,
+  initCategoriesTable // FIXED: Exported function so server.js can initialize safely
 };
