@@ -36,10 +36,10 @@ const { initCategoriesTable } = require("./models/categoryModel");
 
 const app = express();
 
-// FIXED: Restore proxy trust so Railway IPs don't break the rate limiter
 app.set("trust proxy", 1);
 
 app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' })); // Added to ensure deep objects pass correctly
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 const allowedOrigins = [
@@ -53,11 +53,18 @@ const allowedOrigins = [
 const corsOptions = {
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
+    
+    // Explicit static origins
     if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS restrictions'));
+      return callback(null, true);
     }
+    
+    // Dynamic Vercel Branch / Preview Deployments Authorization
+    if (origin.endsWith('.vercel.app')) {
+      return callback(null, true);
+    }
+    
+    callback(new Error('Not allowed by CORS restrictions'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -68,6 +75,7 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
+// --- ROUTE REGISTRY ---
 app.use("/api/categories", categoryRoutes);
 app.use("/api/subcategories", subcategoryRoutes);
 app.use("/api/products", productRoutes);
