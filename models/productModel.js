@@ -82,7 +82,7 @@ const attachImages = async (rows) => {
       url: r.file_path.startsWith('http') ? r.file_path : `${CLOUDFRONT_BASE_URL}/${r.file_path}`,
       type: r.media_type || 'image'
     }));
-    // Also set a primary image_url for easy access
+    // Also set a primary image_url for easy acces
     product.image_url = product.images.length > 0 ? product.images[0].url : null;
   }
   return rows;
