@@ -10,7 +10,7 @@ const {
   getCartTotal 
 } = require('../models/cartModel');
 
-// GET /api/cart - get current user's cart
+// GET /api/cart - get current user's 
 router.get('/', authenticateUser, async (req, res) => {
   try { 
     const { items, total } = await getCartTotal(req.user.id);
