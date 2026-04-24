@@ -3,121 +3,55 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
 const pool = require('../config/db');
 const { sendMail } = require('../utils/mail');
-
-// Import Rate Limiters
 const { registerLimiter, loginLimiter, otpLimiter } = require('../middleware/rateLimiter');
-
-const {
-  getAdminByEmail,
-  getAdminById,
-  verifyPassword: verifyAdminPassword,
-  updateAdminPassword
-} = require("../models/adminModel");
-
-const {
-  createUser,
-  getUserByEmail,
-  getUserById,
-  verifyPassword: verifyCustomerPassword
-} = require("../models/userModel");
-
 const { authenticateAdmin } = require('../middleware/authMiddleware');
+
+const { getAdminByEmail, getAdminById, verifyPassword: verifyAdminPassword, updateAdminPassword } = require("../models/adminModel");
+const { createUser, getUserByEmail, getUserById, verifyPassword: verifyCustomerPassword } = require("../models/userModel");
 
 const router = express.Router();
 
 const DISPOSABLE_DOMAINS = [
-  'mailinator.com', 'tempmail.com', 'guerrillamail.com',
-  '10minutemail.com', 'throwaway.email', 'getnada.com',
-  'trashmail.com', 'maildrop.cc', 'sharklasers.com'
+  'mailinator.com', 'tempmail.com', 'guerrillamail.com', '10minutemail.com', 'throwaway.email', 'getnada.com', 'trashmail.com', 'maildrop.cc', 'sharklasers.com'
 ];
 
 /**
- * @route POST /api/auth/setup-admin
- * @desc ONE-TIME USE: Generates the master admin account
- */
-router.post("/setup-admin", async (req, res) => {
-  try {
-    const { email, password, secret } = req.body;
-    
-    // Security layer to prevent unauthorized creations
-    if (secret !== "anritvox-deploy") {
-      return res.status(403).json({ message: "Forbidden: Invalid Setup Secret" });
-    }
-
-    const existingAdmin = await getAdminByEmail(email);
-    if (existingAdmin) {
-      return res.status(409).json({ message: "Admin account already exists!" });
-    }
-
-    const hash = await bcrypt.hash(password, 10);
-    await pool.query('INSERT INTO admin_users (email, password_hash) VALUES (?, ?)', [email, hash]);
-    
-    res.status(201).json({ success: true, message: `Master Admin created: ${email}` });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-/**
  * @route POST /api/auth/admin/login
- * @desc STRICT Admin-Only Login with Captcha
+ * @desc STRICT ADMIN LOGIN - Only checks admin_users table
  */
 router.post("/admin/login", loginLimiter, async (req, res) => {
   try {
     const { email, password, turnstileToken } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({ message: "Email and password required" });
-    }
+    if (!email || !password) return res.status(400).json({ message: "Email and password required" });
 
-    // 1. Verify Cloudflare Turnstile Captcha
+    // Turnstile Validation
     if (process.env.TURNSTILE_SECRET_KEY && turnstileToken) {
       const turnstileRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          secret: process.env.TURNSTILE_SECRET_KEY,
-          response: turnstileToken
-        })
+        body: JSON.stringify({ secret: process.env.TURNSTILE_SECRET_KEY, response: turnstileToken })
       });
       const turnstileData = await turnstileRes.json();
-      if (!turnstileData.success) {
-        return res.status(400).json({ message: "Security check failed. Are you a bot?" });
-      }
+      if (!turnstileData.success) return res.status(400).json({ message: "Security verification failed." });
     }
 
-    // 2. Strict lookup in admin_users table ONLY
     const admin = await getAdminByEmail(email);
-    if (!admin) {
-      return res.status(401).json({ message: "Invalid admin credentials" });
-    }
+    if (!admin) return res.status(401).json({ message: "Invalid admin credentials" });
 
-    // 3. Verify Password
     const validAdmin = await verifyAdminPassword(password, admin.password_hash);
-    if (!validAdmin) {
-      return res.status(401).json({ message: "Invalid admin credentials" });
-    }
+    if (!validAdmin) return res.status(401).json({ message: "Invalid admin credentials" });
 
-    // 4. Issue Token
-    const token = jwt.sign(
-      { id: admin.id, email: admin.email, role: "admin" },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-
-    return res.json({
-      token,
-      admin: { id: admin.id, email: admin.email, role: "admin" }
-    });
+    const token = jwt.sign({ id: admin.id, email: admin.email, role: "admin" }, process.env.JWT_SECRET, { expiresIn: "7d" });
+    return res.json({ token, admin: { id: admin.id, email: admin.email, role: "admin" } });
   } catch (err) {
-    console.error("Admin Auth error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
 /**
  * @route POST /api/auth/login
- * @desc Customer Login
+ * @desc CUSTOMER LOGIN - Only checks users table
  */
 router.post("/login", loginLimiter, async (req, res) => {
   try {
@@ -130,43 +64,21 @@ router.post("/login", loginLimiter, async (req, res) => {
     const validCustomer = await verifyCustomerPassword(password, customer.password_hash);
     if (!validCustomer) return res.status(401).json({ message: "Invalid credentials" });
 
-    const token = jwt.sign(
-      { id: customer.id, email: customer.email, role: customer.role },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
-    
-    return res.json({
-      token,
-      user: { id: customer.id, name: customer.name, email: customer.email, role: customer.role }
-    });
+    const token = jwt.sign({ id: customer.id, email: customer.email, role: customer.role }, process.env.JWT_SECRET, { expiresIn: "7d" });
+    return res.json({ token, user: { id: customer.id, name: customer.name, email: customer.email, role: customer.role } });
   } catch (err) {
     res.status(500).json({ message: "Server error" });
   }
 });
 
-/**
- * @route POST /api/auth/register
- * @desc Request OTP for registration
- */
 router.post("/register", registerLimiter, async (req, res) => {
   try {
-    const { name, email, password, phone, turnstileToken } = req.body;
+    const { name, email, password, phone } = req.body;
     if (!name || !email || !password) return res.status(400).json({ message: "Name, email, and password are required" });
 
     const emailDomain = email.split('@')[1].toLowerCase();
     if (DISPOSABLE_DOMAINS.includes(emailDomain)) return res.status(400).json({ message: "Disposable emails not allowed" });
     if (password.length < 8) return res.status(400).json({ message: "Password must be at least 8 characters" });
-
-    if (process.env.TURNSTILE_SECRET_KEY && turnstileToken) {
-      const turnstileRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ secret: process.env.TURNSTILE_SECRET_KEY, response: turnstileToken })
-      });
-      const turnstileData = await turnstileRes.json();
-      if (!turnstileData.success) return res.status(400).json({ message: "Bot verification failed." });
-    }
 
     const existingUser = await getUserByEmail(email);
     if (existingUser) return res.status(409).json({ message: "Email already registered" });
@@ -181,15 +93,11 @@ router.post("/register", registerLimiter, async (req, res) => {
     );
 
     await sendMail({
-      to: email,
-      subject: 'Verify your Anritvox account',
-      html: `<h3>Welcome to Anritvox!</h3><p>Your verification code is: <strong>${otp}</strong></p>`
+      to: email, subject: 'Verify your Anritvox account', html: `<h3>Welcome to Anritvox!</h3><p>Your verification code is: <strong>${otp}</strong></p>`
     });
 
     res.json({ success: true, message: "OTP sent to email." });
-  } catch (err) {
-    res.status(500).json({ message: "Server error" });
-  }
+  } catch (err) { res.status(500).json({ message: "Server error" }); }
 });
 
 router.post("/verify-email", otpLimiter, async (req, res) => {
@@ -211,9 +119,7 @@ router.post("/verify-email", otpLimiter, async (req, res) => {
     const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
     res.status(201).json({ success: true, token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
-  } catch (err) {
-    res.status(500).json({ message: "Server error" });
-  }
+  } catch (err) { res.status(500).json({ message: "Server error" }); }
 });
 
 router.get("/me", authenticateAdmin, async (req, res) => {
