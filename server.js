@@ -3,7 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const pool = require("./config/db");
 const path = require("path");
-const bcrypt = require("bcrypt"); // ADDED BCRYPT FOR AUTO-ADMIN
+const bcrypt = require("bcrypt");
 
 const categoryRoutes = require("./routes/categoryRoutes");
 const subcategoryRoutes = require("./routes/subcategoryRoutes");
@@ -102,13 +102,13 @@ async function initDB() {
     await createOrdersTables();
     await createBannerTable();
 
-    // CRITICAL FIX: AUTOMATIC ADMIN CREATION
+    // STRICT GUARANTEE: The Master Admin is created automatically
     try {
       const [adminRows] = await pool.query("SELECT * FROM admin_users WHERE email = 'admin@anritvox.com'");
       if (adminRows.length === 0) {
          const hash = await bcrypt.hash('Admin@123', 10);
          await pool.query("INSERT INTO admin_users (email, password_hash) VALUES ('admin@anritvox.com', ?)", [hash]);
-         console.log("[DB] SUCCESS: Master Admin Generated.");
+         console.log("[DB] Master Admin Generated: admin@anritvox.com | Admin@123");
       }
     } catch (adminErr) {
       console.log("[DB] Note: Admin table check bypassed temporarily.");
@@ -123,8 +123,7 @@ async function initDB() {
 app.use('/api', (req, res, next) => {
   res.status(405).json({
     success: false,
-    error: "Method Not Allowed",
-    message: `The ${req.method} method is not supported for ${req.originalUrl}`
+    error: "Method Not Allowed"
   });
 });
 
