@@ -102,7 +102,6 @@ async function initDB() {
     await createOrdersTables();
     await createBannerTable();
 
-    // STRICT GUARANTEE: The Master Admin is created automatically
     try {
       const [adminRows] = await pool.query("SELECT * FROM admin_users WHERE email = 'admin@anritvox.com'");
       if (adminRows.length === 0) {
@@ -120,17 +119,12 @@ async function initDB() {
   }
 }
 
-app.use('/api', (req, res, next) => {
-  res.status(405).json({
-    success: false,
-    error: "Method Not Allowed"
-  });
-});
-
-app.use((req, res, next) => {
+// CRITICAL FIX: Replaced the 405 black-hole with a proper RESTful 404 handler for API routes
+app.use('/api/*', (req, res) => {
   res.status(404).json({ success: false, message: "API Endpoint Not Found" });
 });
 
+// Global Error Handler
 app.use((err, req, res, next) => {
   if (err.message !== 'Not allowed by CORS restrictions') {
     console.error(`[CRITICAL] ${err.name}: ${err.message}`);
