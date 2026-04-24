@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const pool = require("./config/db");
 const path = require("path");
+const bcrypt = require("bcrypt"); // ADDED BCRYPT FOR AUTO-ADMIN
 
 const categoryRoutes = require("./routes/categoryRoutes");
 const subcategoryRoutes = require("./routes/subcategoryRoutes");
@@ -37,9 +38,7 @@ const { initCategoriesTable } = require("./models/categoryModel");
 const app = express();
 
 app.set("trust proxy", 1);
-
 app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' })); // Added to ensure deep objects pass correctly
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 const allowedOrigins = [
@@ -53,18 +52,11 @@ const allowedOrigins = [
 const corsOptions = {
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
-    
-    // Explicit static origins
     if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
-      return callback(null, true);
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS restrictions'));
     }
-    
-    // Dynamic Vercel Branch / Preview Deployments Authorization
-    if (origin.endsWith('.vercel.app')) {
-      return callback(null, true);
-    }
-    
-    callback(new Error('Not allowed by CORS restrictions'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -75,7 +67,6 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// --- ROUTE REGISTRY ---
 app.use("/api/categories", categoryRoutes);
 app.use("/api/subcategories", subcategoryRoutes);
 app.use("/api/products", productRoutes);
@@ -110,6 +101,19 @@ async function initDB() {
     await createCartTable();
     await createOrdersTables();
     await createBannerTable();
+
+    // CRITICAL FIX: AUTOMATIC ADMIN CREATION
+    try {
+      const [adminRows] = await pool.query("SELECT * FROM admin_users WHERE email = 'admin@anritvox.com'");
+      if (adminRows.length === 0) {
+         const hash = await bcrypt.hash('Admin@123', 10);
+         await pool.query("INSERT INTO admin_users (email, password_hash) VALUES ('admin@anritvox.com', ?)", [hash]);
+         console.log("[DB] SUCCESS: Master Admin Generated.");
+      }
+    } catch (adminErr) {
+      console.log("[DB] Note: Admin table check bypassed temporarily.");
+    }
+
     console.log("[DB] All tables verified/created successfully.");
   } catch (err) {
     console.error("[DB] Initialization error:", err.message);
@@ -131,14 +135,6 @@ app.use((req, res, next) => {
 app.use((err, req, res, next) => {
   if (err.message !== 'Not allowed by CORS restrictions') {
     console.error(`[CRITICAL] ${err.name}: ${err.message}`);
-    console.error(err.stack);
-  }
-
-  if (err.code === 'ER_LOCK_DEADLOCK') {
-    return res.status(409).json({ 
-      success: false, 
-      message: "High traffic detected. Please try your request again." 
-    });
   }
 
   if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
@@ -148,8 +144,7 @@ app.use((err, req, res, next) => {
   const statusCode = err.status || 500;
   res.status(statusCode).json({
     success: false,
-    message: err.message || "Internal Server Error",
-    error: (process.env.NODE_ENV === 'development' || statusCode !== 500) ? err.message : "Our team has been notified."
+    message: err.message || "Internal Server Error"
   });
 });
 
