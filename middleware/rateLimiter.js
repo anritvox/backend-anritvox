@@ -1,6 +1,5 @@
 const rateLimit = require('express-rate-limit');
 
-// Stricter registration limiter: 2 attempts per IP per hour
 const registerLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,
     max: 2,
@@ -13,7 +12,7 @@ const registerLimiter = rateLimit({
     skipSuccessfulRequests: false,
 });
 
-// OTP request limiter: 3 OTP requests per email per hour (keyed by IP)
+// OTP request limiter: 3 OTP requests per email per hour
 const otpLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,
     max: 3,
