@@ -37,38 +37,62 @@ const { initCategoriesTable } = require("./models/categoryModel");
 
 const app = express();
 
-app.set("trust proxy", 1);
-app.use(express.json({ limit: '10mb' }));
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+// 1. PRIMARY CORS CONFIGURATION (Moved to Top)
+const allowedOrigins = [
+  "https://www.anritvox.com",
+  "https://anritvox.com",
+  "http://localhost:5173",
+  "http://localhost:3000"
+];
 
-// BULLETPROOF CORS CONFIGURATION
 const corsOptions = {
   origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl)
     if (!origin) return callback(null, true);
     
-    const allowedPatterns = [
-      /^https:\/\/www\.anritvox\.com$/,
-      /^https:\/\/anritvox\.com$/,
-      /^http:\/\/localhost:\d+$/,
-      /\.vercel\.app$/
-    ];
-
-    if (allowedPatterns.some(pattern => pattern.test(origin)) || process.env.NODE_ENV === 'development') {
+    const isAllowed = allowedOrigins.includes(origin) || 
+                      origin.endsWith(".vercel.app") || 
+                      process.env.NODE_ENV === "development";
+                      
+    if (isAllowed) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      console.log("CORS Rejected Origin:", origin);
+      callback(new Error("Not allowed by CORS"));
     }
   },
   credentials: true,
-  methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
-  allowedHeaders: "Content-Type,Authorization,X-Requested-With,Accept,Origin",
-  exposedHeaders: "Content-Disposition",
-  optionsSuccessStatus: 204 // Legacy browser support
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
+  exposedHeaders: ["Content-Range", "X-Content-Range"],
+  optionsSuccessStatus: 204
 };
 
-// Apply CORS globally and strictly handle preflight OPTIONS
+// Apply CORS middleware
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions)); 
+
+// Handle preflight requests for all routes
+app.options("*", cors(corsOptions));
+
+// 2. ADDITIONAL SECURITY HEADERS (Manual Fallback)
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin) || (origin && origin.endsWith(".vercel.app"))) {
+    res.header("Access-Control-Allow-Origin", origin);
+  }
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin");
+  
+  if (req.method === "OPTIONS") {
+    return res.status(204).send();
+  }
+  next();
+});
+
+app.set("trust proxy", 1);
+app.use(express.json({ limit: "10mb" }));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // ROUTES
 app.use("/api/categories", categoryRoutes);
@@ -105,44 +129,38 @@ async function initDB() {
     await createCartTable();
     await createOrdersTables();
     await createBannerTable();
-
+    
     try {
       const [adminRows] = await pool.query("SELECT * FROM admin_users WHERE email = 'admin@anritvox.com'");
       if (adminRows.length === 0) {
-         const hash = await bcrypt.hash('Admin@123', 10);
-         await pool.query("INSERT INTO admin_users (email, password_hash) VALUES ('admin@anritvox.com', ?)", [hash]);
-         console.log("[DB] Master Admin Generated.");
+        const hash = await bcrypt.hash('Admin@123', 10);
+        await pool.query("INSERT INTO admin_users (email, password_hash) VALUES ('admin@anritvox.com', ?)", [hash]);
+        console.log("[DB] Master Admin Generated.");
       }
     } catch (adminErr) {
       console.log("[DB] Note: Admin table check bypassed temporarily.");
     }
-
     console.log("[DB] All tables verified/created successfully.");
   } catch (err) {
     console.error("[DB] Initialization error:", err.message);
   }
 }
 
-// CRITICAL FIX: Proper 404 Fallback (Preserves CORS headers)
-app.use('/api/*', (req, res) => {
+// 404 Fallback
+app.use("/api/*", (req, res) => {
   res.status(404).json({ success: false, message: `API Endpoint Not Found: ${req.originalUrl}` });
 });
 
 // Global Error Handler
 app.use((err, req, res, next) => {
-  if (err.message === 'Not allowed by CORS') {
+  if (err.message === "Not allowed by CORS") {
     return res.status(403).json({ success: false, message: "CORS Origin Rejected" });
   }
-
-  if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
+  if (err.name === "JsonWebTokenError" || err.name === "TokenExpiredError") {
     return res.status(401).json({ success: false, message: "Session invalid or expired" });
   }
-
   const statusCode = err.status || 500;
-  res.status(statusCode).json({
-    success: false,
-    message: err.message || "Internal Server Error"
-  });
+  res.status(statusCode).json({ success: false, message: err.message || "Internal Server Error" });
 });
 
 const PORT = process.env.PORT || 5000;
