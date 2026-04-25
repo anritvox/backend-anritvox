@@ -53,7 +53,7 @@ const corsOptions = {
     const isAllowed = allowedOrigins.includes(origin) || 
                       origin.endsWith(".vercel.app") || 
                       process.env.NODE_ENV === "development";
-                      
+    
     if (isAllowed) {
       callback(null, true);
     } else {
@@ -71,8 +71,8 @@ const corsOptions = {
 // Apply CORS middleware
 app.use(cors(corsOptions));
 
-// Handle preflight requests for all routes
-app.options("*", cors(corsOptions));
+// Handle preflight requests for all routes - using regex to avoid Express 5 PathError
+app.options(/(.*)/,  cors(corsOptions));
 
 // 2. ADDITIONAL SECURITY HEADERS (Manual Fallback)
 app.use((req, res, next) => {
