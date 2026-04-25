@@ -5,6 +5,7 @@ const pool = require("./config/db");
 const path = require("path");
 const bcrypt = require("bcrypt");
 
+const categoryRoutes = require("./routes/categoryRoutes");
 const subcategoryRoutes = require("./routes/subcategoryRoutes");
 const productRoutes = require("./routes/productRoutes");
 const warrantyRoutes = require("./routes/warrantyRoutes");
