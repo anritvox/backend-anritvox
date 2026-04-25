@@ -1,4 +1,4 @@
-// backend/routes/userRoutes.js
+// backend/routes/userRoutes
 const express = require('express');
 const bcrypt = require('bcrypt');
 const { authenticator } = require('otplib');
