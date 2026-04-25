@@ -6,6 +6,7 @@ const path = require("path");
 const bcrypt = require("bcrypt");
 
 const categoryRoutes = require("./routes/categoryRoutes");
+const fitmentRoutes = require('./routes/fitmentRoutes');
 const subcategoryRoutes = require("./routes/subcategoryRoutes");
 const productRoutes = require("./routes/productRoutes");
 const warrantyRoutes = require("./routes/warrantyRoutes");
@@ -95,6 +96,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // ROUTES
+app.use('/api/fitments', fitmentRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/subcategories", subcategoryRoutes);
 app.use("/api/products", productRoutes);
