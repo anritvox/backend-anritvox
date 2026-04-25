@@ -3,7 +3,7 @@ const router = express.Router();
 const db = require('../config/db');
 const { authenticateAdmin } = require('../middleware/authMiddleware');
 const multer = require('multer');
-const XLSX = require('xlsx');
+const ExcelJS = require('exceljs');
 
 // Multer memory storage for Excel upload
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
