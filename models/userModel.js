@@ -11,20 +11,31 @@ const createUsersTable = async () => {
       phone VARCHAR(20),
       role ENUM('customer','admin') DEFAULT 'customer',
       is_active TINYINT(1) DEFAULT 1,
+      
+      -- Advanced Security Fields
+      two_factor_secret VARCHAR(255),
+      two_factor_enabled TINYINT(1) DEFAULT 0,
+      security_question VARCHAR(255) DEFAULT 'What was the designation of your first hardware build?',
+      security_answer_hash VARCHAR(255),
+      
+      -- OTP Fields
       reset_otp VARCHAR(10),
       reset_otp_expires BIGINT,
+      
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )
   `);
 };
-// We export this to be controlled by server.js initialization, removing standalone catch to prevent race 
 
-const createUser = async ({ name, email, password, phone }) => {
+const createUser = async ({ name, email, password, phone, securityAnswer = 'anritvox-alpha' }) => {
   const hash = await bcrypt.hash(password, 10);
+  // Default security answer hash for the fallback system
+  const secHash = await bcrypt.hash(securityAnswer.toLowerCase(), 10);
+  
   const [result] = await pool.query(
-    'INSERT INTO users (name, email, password_hash, phone) VALUES (?, ?, ?, ?)',
-    [name, email, hash, phone || null]
+    'INSERT INTO users (name, email, password_hash, phone, security_answer_hash) VALUES (?, ?, ?, ?, ?)',
+    [name, email, hash, phone || null, secHash]
   );
   return result.insertId;
 };
@@ -36,7 +47,7 @@ const getUserByEmail = async (email) => {
 
 const getUserById = async (id) => {
   const [rows] = await pool.query(
-    'SELECT id, name, email, phone, role, is_active, created_at FROM users WHERE id = ?',
+    'SELECT id, name, email, phone, role, is_active, two_factor_enabled, security_question, created_at FROM users WHERE id = ?',
     [id]
   );
   return rows[0];
@@ -80,6 +91,7 @@ const deleteUser = async (id) => {
 };
 
 const verifyPassword = async (password, hash) => bcrypt.compare(password, hash);
+const verifySecurityAnswer = async (answer, hash) => bcrypt.compare(answer.toLowerCase(), hash);
 
 module.exports = {
   createUser,
@@ -93,5 +105,6 @@ module.exports = {
   updateUserStatus,
   deleteUser,
   verifyPassword,
+  verifySecurityAnswer,
   createUsersTable,
 };
