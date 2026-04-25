@@ -107,13 +107,15 @@ router.patch('/:id/status', authenticateAdmin, async (req, res) => {
   }
 });
 
-// 7. UPLOAD PRODUCT IMAGES (Admin) - FIXED to use product_images table
+// 7. UPLOAD PRODUCT IMAGES (Admin) - THE FIX
 router.post('/:id/images', authenticateAdmin, upload.array('images', 10), async (req, res) => {
   try {
     const productId = parseInt(req.params.id, 10);
     if (!req.files || req.files.length === 0) return res.status(400).json({ success: false, message: 'No images uploaded' });
     
-    const imageUrls = req.files.map(f => f.location || f.path || f.filename);
+    // CRITICAL FIX: We extract f.key (which is 'products/123.jpg') instead of f.location (which is the protected R2 endpoint).
+    // This allows your productModel.js to correctly prepend your public CLOUDFRONT_BASE_URL.
+    const imageUrls = req.files.map(f => f.key || f.filename || f.path);
     
     if(imageUrls.length > 0) {
         const values = imageUrls.map(url => [productId, url, 'image']);
@@ -127,7 +129,7 @@ router.post('/:id/images', authenticateAdmin, upload.array('images', 10), async 
   }
 });
 
-// 8. DELETE ALL PRODUCT IMAGES (Admin) - NEW ROUTE
+// 8. DELETE ALL PRODUCT IMAGES (Admin)
 router.delete('/:id/images/all', authenticateAdmin, async (req, res) => {
   try {
     const productId = parseInt(req.params.id, 10);
