@@ -4,24 +4,44 @@ const pool = require('../config/db');
 const { authenticateAdmin } = require('../middleware/authMiddleware');
 const { generateUploadUrl } = require('../config/s3Upload');
 
+// Helper to safely parse JSON arrays from MySQL
+const parseImages = (rows) => {
+  return rows.map(row => {
+    let parsedImages = [];
+    if (row.images) {
+      try {
+        parsedImages = typeof row.images === 'string' ? JSON.parse(row.images) : row.images;
+      } catch (e) { parsedImages = []; }
+    }
+    return { ...row, images: parsedImages };
+  });
+};
+
 // 1. GET ALL ACTIVE PRODUCTS (Public)
 router.get('/active', async (req, res) => {
   try {
     const { category, subcategory, search, sort, min_price, max_price } = req.query;
-    let query = 'SELECT * FROM products WHERE status = "active"';
+    let query = `
+      SELECT p.*, 
+      (SELECT JSON_ARRAYAGG(file_path) FROM product_images WHERE product_id = p.id) as images 
+      FROM products p WHERE p.status = "active"
+    `;
     const params = [];
-    if (category) { query += ' AND category_id = ?'; params.push(category); }
-    if (subcategory) { query += ' AND subcategory_id = ?'; params.push(subcategory); }
-    if (search) { query += ' AND name LIKE ?'; params.push(`%${search}%`); }
-    if (min_price) { query += ' AND price >= ?'; params.push(min_price); }
-    if (max_price) { query += ' AND price <= ?'; params.push(max_price); }
-    if (sort === 'price_asc') query += ' ORDER BY price ASC';
-    else if (sort === 'price_desc') query += ' ORDER BY price DESC';
-    else if (sort === 'newest') query += ' ORDER BY created_at DESC';
-    else if (sort === 'rating') query += ' ORDER BY rating DESC';
-    else query += ' ORDER BY created_at DESC';
+    
+    if (category) { query += ' AND p.category_id = ?'; params.push(category); }
+    if (subcategory) { query += ' AND p.subcategory_id = ?'; params.push(subcategory); }
+    if (search) { query += ' AND p.name LIKE ?'; params.push(`%${search}%`); }
+    if (min_price) { query += ' AND p.price >= ?'; params.push(min_price); }
+    if (max_price) { query += ' AND p.price <= ?'; params.push(max_price); }
+    
+    if (sort === 'price_asc') query += ' ORDER BY p.price ASC';
+    else if (sort === 'price_desc') query += ' ORDER BY p.price DESC';
+    else if (sort === 'newest') query += ' ORDER BY p.created_at DESC';
+    else if (sort === 'rating') query += ' ORDER BY p.rating DESC';
+    else query += ' ORDER BY p.created_at DESC';
+    
     const [rows] = await pool.query(query, params);
-    res.json({ success: true, data: rows });
+    res.json({ success: true, data: parseImages(rows) });
   } catch (error) {
     console.error('Fetch Active Products Error:', error);
     res.status(500).json({ success: false, message: 'Database query failed' });
@@ -31,8 +51,14 @@ router.get('/active', async (req, res) => {
 // 2. GET ALL PRODUCTS ADMIN (Protected)
 router.get('/', authenticateAdmin, async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.id ORDER BY p.created_at DESC');
-    res.json({ success: true, data: rows });
+    const [rows] = await pool.query(`
+      SELECT p.*, c.name as category_name,
+      (SELECT JSON_ARRAYAGG(file_path) FROM product_images WHERE product_id = p.id) as images
+      FROM products p 
+      LEFT JOIN categories c ON p.category_id = c.id 
+      ORDER BY p.created_at DESC
+    `);
+    res.json({ success: true, data: parseImages(rows) });
   } catch (error) {
     console.error('Admin Fetch Products Error:', error);
     res.status(500).json({ success: false, message: 'Database query failed' });
@@ -42,9 +68,13 @@ router.get('/', authenticateAdmin, async (req, res) => {
 // 3. GET PRODUCT BY SLUG (Public)
 router.get('/slug/:slug', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM products WHERE slug = ? AND status = "active"', [req.params.slug]);
+    const [rows] = await pool.query(`
+      SELECT p.*, 
+      (SELECT JSON_ARRAYAGG(file_path) FROM product_images WHERE product_id = p.id) as images
+      FROM products p WHERE p.slug = ? AND p.status = "active"
+    `, [req.params.slug]);
     if (rows.length === 0) return res.status(404).json({ success: false, message: 'Product node not found by slug' });
-    res.json({ success: true, data: rows[0] });
+    res.json({ success: true, data: parseImages(rows)[0] });
   } catch (error) {
     console.error('Fetch By Slug Error:', error);
     res.status(500).json({ success: false, message: 'Database query failed' });
@@ -192,9 +222,13 @@ router.get('/:id', async (req, res) => {
   try {
     const productId = parseInt(req.params.id, 10);
     if (isNaN(productId)) return res.status(400).json({ success: false, message: 'Invalid ID format' });
-    const [rows] = await pool.query('SELECT * FROM products WHERE id = ?', [productId]);
+    const [rows] = await pool.query(`
+      SELECT p.*, 
+      (SELECT JSON_ARRAYAGG(file_path) FROM product_images WHERE product_id = p.id) as images
+      FROM products p WHERE p.id = ?
+    `, [productId]);
     if (rows.length === 0) return res.status(404).json({ success: false, message: 'Product node not found by ID' });
-    res.json({ success: true, data: rows[0] });
+    res.json({ success: true, data: parseImages(rows)[0] });
   } catch (error) {
     console.error('Fetch By ID Error:', error);
     res.status(500).json({ success: false, message: 'Database query failed' });
