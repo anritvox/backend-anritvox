@@ -41,32 +41,36 @@ app.set("trust proxy", 1);
 app.use(express.json({ limit: '10mb' }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-const allowedOrigins = [
-  "https://www.anritvox.com",
-  "https://anritvox.com",
-  "https://anritvox-frontend.vercel.app",
-  "http://localhost:5173",
-  "http://localhost:3000"
-];
-
+// BULLETPROOF CORS CONFIGURATION
 const corsOptions = {
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1 || process.env.NODE_ENV === 'development') {
+    
+    const allowedPatterns = [
+      /^https:\/\/www\.anritvox\.com$/,
+      /^https:\/\/anritvox\.com$/,
+      /^http:\/\/localhost:\d+$/,
+      /\.vercel\.app$/
+    ];
+
+    if (allowedPatterns.some(pattern => pattern.test(origin)) || process.env.NODE_ENV === 'development') {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS restrictions'));
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
-  exposedHeaders: ['Content-Disposition'],
-  optionsSuccessStatus: 200,
+  methods: "GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS",
+  allowedHeaders: "Content-Type,Authorization,X-Requested-With,Accept,Origin",
+  exposedHeaders: "Content-Disposition",
+  optionsSuccessStatus: 204 // Legacy browser support
 };
 
+// Apply CORS globally and strictly handle preflight OPTIONS
 app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); 
 
+// ROUTES
 app.use("/api/categories", categoryRoutes);
 app.use("/api/subcategories", subcategoryRoutes);
 app.use("/api/products", productRoutes);
@@ -107,7 +111,7 @@ async function initDB() {
       if (adminRows.length === 0) {
          const hash = await bcrypt.hash('Admin@123', 10);
          await pool.query("INSERT INTO admin_users (email, password_hash) VALUES ('admin@anritvox.com', ?)", [hash]);
-         console.log("[DB] Master Admin Generated: admin@anritvox.com | Admin@123");
+         console.log("[DB] Master Admin Generated.");
       }
     } catch (adminErr) {
       console.log("[DB] Note: Admin table check bypassed temporarily.");
@@ -119,15 +123,15 @@ async function initDB() {
   }
 }
 
-// CRITICAL FIX: Replaced the 405 black-hole with a proper RESTful 404 handler for API routes
+// CRITICAL FIX: Proper 404 Fallback (Preserves CORS headers)
 app.use('/api/*', (req, res) => {
-  res.status(404).json({ success: false, message: "API Endpoint Not Found" });
+  res.status(404).json({ success: false, message: `API Endpoint Not Found: ${req.originalUrl}` });
 });
 
 // Global Error Handler
 app.use((err, req, res, next) => {
-  if (err.message !== 'Not allowed by CORS restrictions') {
-    console.error(`[CRITICAL] ${err.name}: ${err.message}`);
+  if (err.message === 'Not allowed by CORS') {
+    return res.status(403).json({ success: false, message: "CORS Origin Rejected" });
   }
 
   if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
