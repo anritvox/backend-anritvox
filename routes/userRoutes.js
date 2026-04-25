@@ -1,6 +1,8 @@
 // backend/routes/userRoutes.js
 const express = require('express');
 const bcrypt = require('bcrypt');
+const { authenticator } = require('otplib');
+const qrcode = require('qrcode');
 const router = express.Router();
 const {
   createUser,
@@ -101,10 +103,6 @@ router.post('/change-password', authenticateUser, async (req, res) => {
     return res.status(500).json({ message: 'Server error' });
   }
 });
-
-const bcrypt = require("bcrypt");
-const { authenticator } = require('otplib');
-const qrcode = require('qrcode');
 
 // 1. Update Security Question
 router.put('/security-question', authenticateUser, async (req, res) => {
