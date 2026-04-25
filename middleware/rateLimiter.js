@@ -12,7 +12,7 @@ const registerLimiter = rateLimit({
     skipSuccessfulRequests: false,
 });
 
-// OTP request limiter: 3 OTP requests per email per HOUR
+// OTP request limiter: 3 OTP requests per email per hour
 const otpLimiter = rateLimit({
     windowMs: 60 * 60 * 1000,
     max: 3,
