@@ -2,8 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
 const { authenticateAdmin } = require('../middleware/authMiddleware');
-// Import the new upload and manual uploader function
-const { upload, uploadToR2 } = require('../config/s3Upload');
+const { generateUploadUrl } = require('../config/s3Upload');
 
 // 1. GET ALL ACTIVE PRODUCTS (Public)
 router.get('/active', async (req, res) => {
@@ -108,33 +107,39 @@ router.patch('/:id/status', authenticateAdmin, async (req, res) => {
   }
 });
 
-// 7. UPLOAD PRODUCT IMAGES (Admin) - 100% WORKING SOLUTION
-router.post('/:id/images', authenticateAdmin, upload.array('images', 10), async (req, res) => {
+// 7. GET PRE-SIGNED UPLOAD URL (Admin)
+router.post('/presign', authenticateAdmin, async (req, res) => {
   try {
-    const productId = parseInt(req.params.id, 10);
-    if (!req.files || req.files.length === 0) return res.status(400).json({ success: false, message: 'No images uploaded' });
+    const { filename, fileType } = req.body;
+    if (!filename || !fileType) return res.status(400).json({ success: false, message: 'Filename and type required' });
     
-    const imageUrls = [];
-
-    // Manually upload each file to R2 and get the key back
-    for (const file of req.files) {
-      const key = await uploadToR2(file);
-      imageUrls.push(key);
-    }
-    
-    if(imageUrls.length > 0) {
-        const values = imageUrls.map(url => [productId, url, 'image']);
-        await pool.query('INSERT INTO product_images (product_id, file_path, media_type) VALUES ?', [values]);
-    }
-    
-    res.json({ success: true, message: 'Images uploaded successfully', images: imageUrls });
+    const { uploadUrl, key } = await generateUploadUrl(filename, fileType);
+    res.json({ success: true, uploadUrl, key });
   } catch (error) {
-    console.error('Upload Images Error:', error);
-    res.status(500).json({ success: false, message: error.message || 'Image upload failed' });
+    console.error('Presign Error:', error);
+    res.status(500).json({ success: false, message: 'Failed to generate secure upload link' });
   }
 });
 
-// 8. DELETE ALL PRODUCT IMAGES (Admin)
+// 8. SAVE IMAGE KEYS TO DATABASE (Admin)
+router.post('/:id/images/save', authenticateAdmin, async (req, res) => {
+  try {
+    const productId = parseInt(req.params.id, 10);
+    const { imageKeys } = req.body; 
+    
+    if (!imageKeys || imageKeys.length === 0) return res.status(400).json({ success: false, message: 'No image keys provided' });
+    
+    const values = imageKeys.map(key => [productId, key, 'image']);
+    await pool.query('INSERT INTO product_images (product_id, file_path, media_type) VALUES ?', [values]);
+    
+    res.json({ success: true, message: 'Images linked to product' });
+  } catch (error) {
+    console.error('Save Image Error:', error);
+    res.status(500).json({ success: false, message: 'Failed to link images to database' });
+  }
+});
+
+// 9. DELETE ALL PRODUCT IMAGES (Admin)
 router.delete('/:id/images/all', authenticateAdmin, async (req, res) => {
   try {
     const productId = parseInt(req.params.id, 10);
@@ -145,7 +150,7 @@ router.delete('/:id/images/all', authenticateAdmin, async (req, res) => {
   }
 });
 
-// 9. DELETE PRODUCT IMAGE (Admin)
+// 10. DELETE SINGLE PRODUCT IMAGE (Admin)
 router.delete('/:id/images', authenticateAdmin, async (req, res) => {
   try {
     const { imageId } = req.body;
@@ -156,7 +161,7 @@ router.delete('/:id/images', authenticateAdmin, async (req, res) => {
   }
 });
 
-// 10. ADD SERIAL NUMBERS TO PRODUCT (Admin)
+// 11. ADD SERIAL NUMBERS TO PRODUCT (Admin)
 router.post('/:id/serials', authenticateAdmin, async (req, res) => {
   try {
     const { serials } = req.body;
@@ -169,7 +174,7 @@ router.post('/:id/serials', authenticateAdmin, async (req, res) => {
   }
 });
 
-// 11. DELETE PRODUCT (Admin)
+// 12. DELETE PRODUCT (Admin)
 router.delete('/:id', authenticateAdmin, async (req, res) => {
   try {
     const productId = parseInt(req.params.id, 10);
@@ -182,7 +187,7 @@ router.delete('/:id', authenticateAdmin, async (req, res) => {
   }
 });
 
-// 12. GET PRODUCT BY ID (Public)
+// 13. GET PRODUCT BY ID (Public)
 router.get('/:id', async (req, res) => {
   try {
     const productId = parseInt(req.params.id, 10);
