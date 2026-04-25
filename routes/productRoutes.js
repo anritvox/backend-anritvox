@@ -2,22 +2,8 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
 const { authenticateAdmin } = require('../middleware/authMiddleware');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-
-// Multer config for image uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = path.join(__dirname, '../uploads/products');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname.replace(/\s/g, '_')}`);
-  }
-});
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
+// FIX: Use R2/S3 cloud storage via multer-s3 instead of local diskStorage
+const { upload } = require('../config/s3Upload');
 
 // 1. GET ALL ACTIVE PRODUCTS (Public)
 router.get('/active', async (req, res) => {
@@ -69,11 +55,7 @@ router.get('/slug/:slug', async (req, res) => {
 // 4. CREATE PRODUCT (Admin)
 router.post('/', authenticateAdmin, async (req, res) => {
   try {
-    const {
-      name, slug, description, price, discount_price, category_id, subcategory_id,
-      quantity, status, sku, brand, warranty_period, meta_title, meta_description,
-      tags, is_featured, is_trending, is_new_arrival, model_3d_url, video_urls, product_links
-    } = req.body;
+    const { name, slug, description, price, discount_price, category_id, subcategory_id, quantity, status, sku, brand, warranty_period, meta_title, meta_description, tags, is_featured, is_trending, is_new_arrival, model_3d_url, video_urls, product_links } = req.body;
     if (!name || !price) return res.status(400).json({ success: false, message: 'Name and price are required' });
     const finalSlug = slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
     const [result] = await pool.query(
@@ -126,18 +108,25 @@ router.patch('/:id/status', authenticateAdmin, async (req, res) => {
   }
 });
 
-// 7. UPLOAD PRODUCT IMAGES (Admin)
+// 7. UPLOAD PRODUCT IMAGES (Admin) - Uses Cloudflare R2 via multer-s3
+// FIX: Replaced local diskStorage with R2 upload middleware from config/s3Upload.js
+// Axios natively sets multipart boundary; multer reads file.location (R2 public URL)
 router.post('/:id/images', authenticateAdmin, upload.array('images', 10), async (req, res) => {
   try {
     const productId = parseInt(req.params.id, 10);
     if (!req.files || req.files.length === 0) return res.status(400).json({ success: false, message: 'No images uploaded' });
-    const imageUrls = req.files.map(f => `/uploads/products/${f.filename}`);
+    // multer-s3 sets file.location to the full R2/S3 URL
+    const imageUrls = req.files.map(f => f.location);
     const [existing] = await pool.query('SELECT video_urls FROM products WHERE id = ?', [productId]);
     let currentImages = [];
-    try { currentImages = existing[0]?.video_urls ? JSON.parse(existing[0].video_urls) : []; } catch (e) { currentImages = []; }
+    try {
+      currentImages = existing[0]?.video_urls ? JSON.parse(existing[0].video_urls) : [];
+    } catch (e) {
+      currentImages = [];
+    }
     const allImages = [...currentImages, ...imageUrls];
     await pool.query('UPDATE products SET video_urls = ? WHERE id = ?', [JSON.stringify(allImages), productId]);
-    res.json({ success: true, message: 'Images uploaded', images: allImages });
+    res.json({ success: true, message: 'Images uploaded to R2', images: allImages });
   } catch (error) {
     console.error('Upload Images Error:', error);
     res.status(500).json({ success: false, message: 'Image upload failed' });
@@ -151,7 +140,11 @@ router.delete('/:id/images', authenticateAdmin, async (req, res) => {
     const { imageUrl } = req.body;
     const [existing] = await pool.query('SELECT video_urls FROM products WHERE id = ?', [productId]);
     let currentImages = [];
-    try { currentImages = existing[0]?.video_urls ? JSON.parse(existing[0].video_urls) : []; } catch (e) { currentImages = []; }
+    try {
+      currentImages = existing[0]?.video_urls ? JSON.parse(existing[0].video_urls) : [];
+    } catch (e) {
+      currentImages = [];
+    }
     const updated = currentImages.filter(img => img !== imageUrl);
     await pool.query('UPDATE products SET video_urls = ? WHERE id = ?', [JSON.stringify(updated), productId]);
     res.json({ success: true, message: 'Image removed', images: updated });
