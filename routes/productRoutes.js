@@ -4,7 +4,6 @@ const pool = require('../config/db');
 const { authenticateAdmin } = require('../middleware/authMiddleware');
 const { generateUploadUrl } = require('../config/s3Upload');
 
-// Helper to safely parse JSON arrays from MySQL
 const parseImages = (rows) => {
   return rows.map(row => {
     let parsedImages = [];
@@ -43,7 +42,6 @@ router.get('/active', async (req, res) => {
     const [rows] = await pool.query(query, params);
     res.json({ success: true, data: parseImages(rows) });
   } catch (error) {
-    console.error('Fetch Active Products Error:', error);
     res.status(500).json({ success: false, message: 'Database query failed' });
   }
 });
@@ -60,7 +58,6 @@ router.get('/', authenticateAdmin, async (req, res) => {
     `);
     res.json({ success: true, data: parseImages(rows) });
   } catch (error) {
-    console.error('Admin Fetch Products Error:', error);
     res.status(500).json({ success: false, message: 'Database query failed' });
   }
 });
@@ -76,7 +73,6 @@ router.get('/slug/:slug', async (req, res) => {
     if (rows.length === 0) return res.status(404).json({ success: false, message: 'Product node not found by slug' });
     res.json({ success: true, data: parseImages(rows)[0] });
   } catch (error) {
-    console.error('Fetch By Slug Error:', error);
     res.status(500).json({ success: false, message: 'Database query failed' });
   }
 });
@@ -84,17 +80,20 @@ router.get('/slug/:slug', async (req, res) => {
 // 4. CREATE PRODUCT (Admin)
 router.post('/', authenticateAdmin, async (req, res) => {
   try {
-    const { name, slug, description, price, discount_price, category_id, subcategory_id, quantity, status, sku, brand, warranty_period, meta_title, meta_description, tags, is_featured, is_trending, is_new_arrival, model_3d_url, video_urls, product_links } = req.body;
+    const { name, slug, description, price, discount_price, category_id, subcategory_id, quantity, status, sku, brand, warranty_period, meta_title, meta_description, tags, is_featured, is_trending, is_new_arrival, model_3d_url, video_urls, product_links, specifications } = req.body;
     if (!name || !price) return res.status(400).json({ success: false, message: 'Name and price are required' });
     const finalSlug = slug || name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    
+    // Auto-serialize specifications JSON
+    const specData = typeof specifications === 'object' ? JSON.stringify(specifications) : (specifications || null);
+
     const [result] = await pool.query(
-      `INSERT INTO products (name, slug, description, price, discount_price, category_id, subcategory_id, quantity, status, sku, brand, warranty_period, meta_title, meta_description, tags, is_featured, is_trending, is_new_arrival, model_3d_url, video_urls, product_links) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [name, finalSlug, description || '', price, discount_price || null, category_id || null, subcategory_id || null, quantity || 0, status || 'active', sku || null, brand || null, warranty_period || null, meta_title || null, meta_description || null, tags || null, is_featured || 0, is_trending || 0, is_new_arrival || 0, model_3d_url || null, video_urls || null, product_links || null]
+      `INSERT INTO products (name, slug, description, price, discount_price, category_id, subcategory_id, quantity, status, sku, brand, warranty_period, meta_title, meta_description, tags, is_featured, is_trending, is_new_arrival, model_3d_url, video_urls, product_links, specifications) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [name, finalSlug, description || '', price, discount_price || null, category_id || null, subcategory_id || null, quantity || 0, status || 'active', sku || null, brand || null, warranty_period || null, meta_title || null, meta_description || null, tags || null, is_featured || 0, is_trending || 0, is_new_arrival || 0, model_3d_url || null, video_urls || null, product_links || null, specData]
     );
     const [newProduct] = await pool.query('SELECT * FROM products WHERE id = ?', [result.insertId]);
     res.status(201).json({ success: true, message: 'Product created', data: newProduct[0] });
   } catch (error) {
-    console.error('Create Product Error:', error);
     res.status(500).json({ success: false, message: error.message || 'Failed to create product' });
   }
 });
@@ -105,13 +104,17 @@ router.put('/:id', authenticateAdmin, async (req, res) => {
     const productId = parseInt(req.params.id, 10);
     if (isNaN(productId)) return res.status(400).json({ success: false, message: 'Invalid ID format' });
     const fields = req.body;
-    const allowedFields = ['name','slug','description','price','discount_price','category_id','subcategory_id','quantity','status','sku','brand','warranty_period','meta_title','meta_description','tags','is_featured','is_trending','is_new_arrival','model_3d_url','video_urls','product_links'];
+    const allowedFields = ['name','slug','description','price','discount_price','category_id','subcategory_id','quantity','status','sku','brand','warranty_period','meta_title','meta_description','tags','is_featured','is_trending','is_new_arrival','model_3d_url','video_urls','product_links', 'specifications'];
     const updates = [];
     const values = [];
     for (const key of allowedFields) {
       if (fields[key] !== undefined) {
         updates.push(`${key} = ?`);
-        values.push(fields[key]);
+        let val = fields[key];
+        if (key === 'specifications' && typeof val === 'object') {
+          val = JSON.stringify(val);
+        }
+        values.push(val);
       }
     }
     if (updates.length === 0) return res.status(400).json({ success: false, message: 'No valid fields to update' });
@@ -120,7 +123,6 @@ router.put('/:id', authenticateAdmin, async (req, res) => {
     const [updated] = await pool.query('SELECT * FROM products WHERE id = ?', [productId]);
     res.json({ success: true, message: 'Product updated', data: updated[0] });
   } catch (error) {
-    console.error('Update Product Error:', error);
     res.status(500).json({ success: false, message: 'Failed to update product' });
   }
 });
@@ -146,7 +148,6 @@ router.post('/presign', authenticateAdmin, async (req, res) => {
     const { uploadUrl, key } = await generateUploadUrl(filename, fileType);
     res.json({ success: true, uploadUrl, key });
   } catch (error) {
-    console.error('Presign Error:', error);
     res.status(500).json({ success: false, message: 'Failed to generate secure upload link' });
   }
 });
@@ -164,7 +165,6 @@ router.post('/:id/images/save', authenticateAdmin, async (req, res) => {
     
     res.json({ success: true, message: 'Images linked to product' });
   } catch (error) {
-    console.error('Save Image Error:', error);
     res.status(500).json({ success: false, message: 'Failed to link images to database' });
   }
 });
@@ -212,7 +212,6 @@ router.delete('/:id', authenticateAdmin, async (req, res) => {
     await pool.query('DELETE FROM products WHERE id = ?', [productId]);
     res.json({ success: true, message: 'Product deleted' });
   } catch (error) {
-    console.error('Delete Product Error:', error);
     res.status(500).json({ success: false, message: 'Failed to delete product' });
   }
 });
@@ -230,7 +229,6 @@ router.get('/:id', async (req, res) => {
     if (rows.length === 0) return res.status(404).json({ success: false, message: 'Product node not found by ID' });
     res.json({ success: true, data: parseImages(rows)[0] });
   } catch (error) {
-    console.error('Fetch By ID Error:', error);
     res.status(500).json({ success: false, message: 'Database query failed' });
   }
 });
