@@ -96,7 +96,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // ROUTES
-app.use('/api/fitments', fitmentRoutes);
+app.use("/api/fitments", fitmentRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/subcategories", subcategoryRoutes);
 app.use("/api/products", productRoutes);
