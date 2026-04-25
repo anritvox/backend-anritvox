@@ -102,4 +102,48 @@ router.post('/change-password', authenticateUser, async (req, res) => {
   }
 });
 
+const bcrypt = require("bcrypt");
+const { authenticator } = require('otplib');
+const qrcode = require('qrcode');
+
+// 1. Update Security Question
+router.put('/security-question', authenticateUser, async (req, res) => {
+  try {
+    const { question, answer } = req.body;
+    const answerHash = await bcrypt.hash(answer.toLowerCase(), 10);
+    await pool.query('UPDATE users SET security_question=?, security_answer_hash=? WHERE id=?', [question, answerHash, req.user.id]);
+    res.json({ message: "Security question updated." });
+  } catch (err) { res.status(500).json({ message: "Server error" }); }
+});
+
+// 2. Generate 2FA Secret & QR Code
+router.post('/2fa/generate', authenticateUser, async (req, res) => {
+  try {
+    const secret = authenticator.generateSecret();
+    const otpauth = authenticator.keyuri(req.user.email, 'Anritvox OS', secret);
+    const qrCodeUrl = await qrcode.toDataURL(otpauth);
+    res.json({ secret, qrCode: qrCodeUrl });
+  } catch (err) { res.status(500).json({ message: "Server error" }); }
+});
+
+// 3. Verify and Enable 2FA
+router.post('/2fa/enable', authenticateUser, async (req, res) => {
+  try {
+    const { token, secret } = req.body;
+    const isValid = authenticator.verify({ token, secret });
+    if (!isValid) return res.status(400).json({ message: "Invalid OTP Token." });
+
+    await pool.query('UPDATE users SET two_factor_secret=?, two_factor_enabled=1 WHERE id=?', [secret, req.user.id]);
+    res.json({ message: "2FA Enabled Successfully." });
+  } catch (err) { res.status(500).json({ message: "Server error" }); }
+});
+
+// 4. Disable 2FA
+router.post('/2fa/disable', authenticateUser, async (req, res) => {
+  try {
+    await pool.query('UPDATE users SET two_factor_secret=NULL, two_factor_enabled=0 WHERE id=?', [req.user.id]);
+    res.json({ message: "2FA Disabled." });
+  } catch (err) { res.status(500).json({ message: "Server error" }); }
+});
+
 module.exports = { router, userAuth: authenticateUser };
