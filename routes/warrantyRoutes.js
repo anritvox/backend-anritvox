@@ -113,4 +113,37 @@ router.get("/serials", authenticateAdmin, async (req, res) => {
   }
 });
 
+// ALIAS: GET / = GET /admin (for frontend api.js compatibility)
+router.get('/', authenticateAdmin, async (req, res) => {
+  try {
+    const list = await getAllRegistrations();
+    res.json(list);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error loading registrations' });
+  }
+});
+
+// ADMIN: Update warranty status
+router.patch('/:id/status', authenticateAdmin, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const validStatuses = ['pending', 'approved', 'rejected', 'processing', 'resolved', 'closed'];
+    if (!validStatuses.includes(status)) return res.status(400).json({ message: 'Invalid status value' });
+    await updateWarrantyStatus(req.params.id, status);
+    res.json({ message: 'Warranty status updated', status });
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message || 'Update failed' });
+  }
+});
+
+// ADMIN: Delete warranty registration
+router.delete('/:id', authenticateAdmin, async (req, res) => {
+  try {
+    await deleteWarranty(req.params.id);
+    res.json({ message: 'Warranty registration deleted' });
+  } catch (err) {
+    res.status(err.status || 500).json({ message: err.message || 'Delete failed' });
+  }
+});
+
 module.exports = router;
