@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/db');
 const { authenticateAdmin } = require('../middleware/authMiddleware');
-// FIX: Use R2/S3 cloud storage via multer-s3 instead of local diskStorage
 const { upload } = require('../config/s3Upload');
 
 // 1. GET ALL ACTIVE PRODUCTS (Public)
@@ -108,52 +107,49 @@ router.patch('/:id/status', authenticateAdmin, async (req, res) => {
   }
 });
 
-// 7. UPLOAD PRODUCT IMAGES (Admin) - Uses Cloudflare R2 via multer-s3
-// FIX: Replaced local diskStorage with R2 upload middleware from config/s3Upload.js
-// Axios natively sets multipart boundary; multer reads file.location (R2 public URL)
+// 7. UPLOAD PRODUCT IMAGES (Admin) - FIXED to use product_images table
 router.post('/:id/images', authenticateAdmin, upload.array('images', 10), async (req, res) => {
   try {
     const productId = parseInt(req.params.id, 10);
     if (!req.files || req.files.length === 0) return res.status(400).json({ success: false, message: 'No images uploaded' });
-    // multer-s3 sets file.location to the full R2/S3 URL
-    const imageUrls = req.files.map(f => f.location);
-    const [existing] = await pool.query('SELECT video_urls FROM products WHERE id = ?', [productId]);
-    let currentImages = [];
-    try {
-      currentImages = existing[0]?.video_urls ? JSON.parse(existing[0].video_urls) : [];
-    } catch (e) {
-      currentImages = [];
+    
+    const imageUrls = req.files.map(f => f.location || f.path || f.filename);
+    
+    if(imageUrls.length > 0) {
+        const values = imageUrls.map(url => [productId, url, 'image']);
+        await pool.query('INSERT INTO product_images (product_id, file_path, media_type) VALUES ?', [values]);
     }
-    const allImages = [...currentImages, ...imageUrls];
-    await pool.query('UPDATE products SET video_urls = ? WHERE id = ?', [JSON.stringify(allImages), productId]);
-    res.json({ success: true, message: 'Images uploaded to R2', images: allImages });
+    
+    res.json({ success: true, message: 'Images uploaded successfully', images: imageUrls });
   } catch (error) {
     console.error('Upload Images Error:', error);
     res.status(500).json({ success: false, message: 'Image upload failed' });
   }
 });
 
-// 8. DELETE PRODUCT IMAGE (Admin)
-router.delete('/:id/images', authenticateAdmin, async (req, res) => {
+// 8. DELETE ALL PRODUCT IMAGES (Admin) - NEW ROUTE
+router.delete('/:id/images/all', authenticateAdmin, async (req, res) => {
   try {
     const productId = parseInt(req.params.id, 10);
-    const { imageUrl } = req.body;
-    const [existing] = await pool.query('SELECT video_urls FROM products WHERE id = ?', [productId]);
-    let currentImages = [];
-    try {
-      currentImages = existing[0]?.video_urls ? JSON.parse(existing[0].video_urls) : [];
-    } catch (e) {
-      currentImages = [];
-    }
-    const updated = currentImages.filter(img => img !== imageUrl);
-    await pool.query('UPDATE products SET video_urls = ? WHERE id = ?', [JSON.stringify(updated), productId]);
-    res.json({ success: true, message: 'Image removed', images: updated });
+    await pool.query('DELETE FROM product_images WHERE product_id = ?', [productId]);
+    res.json({ success: true, message: 'All images purged from database' });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to purge images' });
+  }
+});
+
+// 9. DELETE PRODUCT IMAGE (Admin)
+router.delete('/:id/images', authenticateAdmin, async (req, res) => {
+  try {
+    const { imageId } = req.body;
+    await pool.query('DELETE FROM product_images WHERE id = ? AND product_id = ?', [imageId, req.params.id]);
+    res.json({ success: true, message: 'Image removed' });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to delete image' });
   }
 });
 
-// 9. ADD SERIAL NUMBERS TO PRODUCT (Admin)
+// 10. ADD SERIAL NUMBERS TO PRODUCT (Admin)
 router.post('/:id/serials', authenticateAdmin, async (req, res) => {
   try {
     const { serials } = req.body;
@@ -166,7 +162,7 @@ router.post('/:id/serials', authenticateAdmin, async (req, res) => {
   }
 });
 
-// 10. DELETE PRODUCT (Admin)
+// 11. DELETE PRODUCT (Admin)
 router.delete('/:id', authenticateAdmin, async (req, res) => {
   try {
     const productId = parseInt(req.params.id, 10);
@@ -179,7 +175,7 @@ router.delete('/:id', authenticateAdmin, async (req, res) => {
   }
 });
 
-// 11. GET PRODUCT BY ID (Public)
+// 12. GET PRODUCT BY ID (Public)
 router.get('/:id', async (req, res) => {
   try {
     const productId = parseInt(req.params.id, 10);
