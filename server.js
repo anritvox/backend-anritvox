@@ -5,7 +5,6 @@ const pool = require("./config/db");
 const path = require("path");
 const bcrypt = require("bcrypt");
 
-const categoryRoutes = require("./routes/categoryRoutes");
 const fitmentRoutes = require('./routes/fitmentRoutes');
 const subcategoryRoutes = require("./routes/subcategoryRoutes");
 const productRoutes = require("./routes/productRoutes");
@@ -27,7 +26,8 @@ const settingsRoutes = require("./routes/settingsRoutes");
 const shippingRoutes = require("./routes/shippingRoutes");
 const returnRoutes = require("./routes/returnRoutes");
 const inventoryRoutes = require("./routes/inventoryRoutes");
-const bannerRoutes = require("./routes/bannerRoutes"); const fitmentRoutes = require("./routes/fitmentRoutes");
+const bannerRoutes = require("./routes/bannerRoutes"); 
+const fitmentRoutes = require("./routes/fitmentRoutes");
 
 const { createBannerTable } = require("./models/bannerModel");
 const { createCartTable } = require("./models/cartModel");
@@ -118,7 +118,7 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/shipping", shippingRoutes);
 app.use("/api/returns", returnRoutes);
 app.use("/api/inventory", inventoryRoutes);
-app.use("/api/banners", bannerRoutes); app.use("/api/fitment", fitmentRoutes);
+app.use("/api/banners", bannerRoutes);
 
 app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running on Railway!" }));
 
