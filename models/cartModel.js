@@ -3,7 +3,6 @@ const pool = require('../config/db');
 
 const createCartTable = async () => {
   try {
-    // 1. Create table if not exists
     await pool.query(`
       CREATE TABLE IF NOT EXISTS cart_items (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -16,14 +15,12 @@ const createCartTable = async () => {
       )
     `);
 
-    // 2. Migration: Ensure UNIQUE KEY exists (for existing tables)
     const [indexes] = await pool.query("SHOW INDEX FROM cart_items WHERE Key_name = 'uq_user_product'");
     if (indexes.length === 0) {
       console.log("[DB] Adding missing unique constraint to cart_items...");
       await pool.query("ALTER TABLE cart_items ADD UNIQUE KEY uq_user_product (user_id, product_id)");
     }
 
-    // 3. Migration: Ensure Foreign Key exists
     const [fk] = await pool.query(`
       SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE 
       WHERE TABLE_NAME = 'cart_items' AND COLUMN_NAME = 'user_id' AND REFERENCED_TABLE_NAME = 'users'
@@ -31,13 +28,11 @@ const createCartTable = async () => {
     if (fk.length === 0) {
        await pool.query("ALTER TABLE cart_items ADD CONSTRAINT fk_cart_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE");
     }
-
   } catch (err) {
     console.error("[DB] cartModel migration error:", err.message);
   }
 };
 
-// Get cart with full product details + stock info
 const getCartByUser = async (userId) => {
   try {
     const [rows] = await pool.query(
@@ -51,21 +46,23 @@ const getCartByUser = async (userId) => {
       [userId]
     );
 
-    return rows.map((r) => ({
-      ...r,
-      unit_price: parseFloat(r.discount_price || r.price || 0),
-      subtotal: parseFloat(r.discount_price || r.price || 0) * r.quantity,
-    }));
+    return rows.map((r) => {
+      // FIX: Ensure pure 0 value overrides original price correctly
+      const activePrice = (r.discount_price !== null && r.discount_price !== "") ? r.discount_price : r.price;
+      return {
+        ...r,
+        unit_price: parseFloat(activePrice),
+        subtotal: parseFloat(activePrice) * r.quantity,
+      };
+    });
   } catch (err) {
     console.error("getCartByUser Error:", err);
     throw err;
   }
 };
 
-// Add or update item with stock validation
 const upsertCartItem = async (userId, productId, quantity) => {
   try {
-    // Check product exists and is active
     const [products] = await pool.query(
       "SELECT id, quantity, status FROM products WHERE id = ?",
       [productId]
@@ -75,7 +72,6 @@ const upsertCartItem = async (userId, productId, quantity) => {
       throw { status: 400, message: 'Product is not available.' };
     }
 
-    // Check if item already in cart to calculate total requested quantity
     const [existing] = await pool.query(
       "SELECT quantity FROM cart_items WHERE user_id = ? AND product_id = ?",
       [userId, productId]
@@ -91,14 +87,12 @@ const upsertCartItem = async (userId, productId, quantity) => {
       };
     }
 
-    // Use INSERT ... ON DUPLICATE KEY UPDATE
-    // Note: VALUES(col) is deprecated in MySQL 8.0.20+, but still works. 
-    // For maximum compatibility across MariaDB/MySQL versions:
+    // FIX: Railway/MySQL 8 deprecation bypass using standard parameter binding
     await pool.query(
       `INSERT INTO cart_items (user_id, product_id, quantity) 
        VALUES (?, ?, ?) 
-       ON DUPLICATE KEY UPDATE quantity = quantity + VALUES(quantity)`,
-      [userId, productId, quantity]
+       ON DUPLICATE KEY UPDATE quantity = quantity + ?`,
+      [userId, productId, quantity, quantity]
     );
 
     return getCartByUser(userId);
