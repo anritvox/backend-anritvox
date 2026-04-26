@@ -1,4 +1,3 @@
-// backend/routes/userRoutes
 const express = require('express');
 const bcrypt = require('bcrypt');
 const { authenticator } = require('otplib');
@@ -15,9 +14,10 @@ const {
   clearResetOtp,
 } = require('../models/userModel');
 const { authenticateUser } = require('../middleware/authMiddleware');
-const { sendMail } = require('../utils/mail');
+const pool = require('../config/db');
 
-// ─── REGISTER ────────────────────────────────────────────
+authenticator.options = { window: 1 };
+
 router.post('/register', async (req, res) => {
   try {
     const { name, email, password, phone } = req.body;
@@ -36,7 +36,6 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// ─── LOGIN ───────────────────────────────────────────────
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -60,7 +59,6 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// ─── PROFILE (Fixed endpoints to match frontend) ─────────
 router.get('/profile', authenticateUser, async (req, res) => {
   try {
     const user = await getUserById(req.user.id);
@@ -83,7 +81,6 @@ router.put('/profile', authenticateUser, async (req, res) => {
   }
 });
 
-// ─── CHANGE PASSWORD ─────────────────────────
 router.post('/change-password', authenticateUser, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
@@ -104,7 +101,6 @@ router.post('/change-password', authenticateUser, async (req, res) => {
   }
 });
 
-// 1. Update Security Question
 router.put('/security-question', authenticateUser, async (req, res) => {
   try {
     const { question, answer } = req.body;
@@ -114,29 +110,26 @@ router.put('/security-question', authenticateUser, async (req, res) => {
   } catch (err) { res.status(500).json({ message: "Server error" }); }
 });
 
-// 2. Generate 2FA Secret & QR Code
 router.post('/2fa/generate', authenticateUser, async (req, res) => {
   try {
     const secret = authenticator.generateSecret();
-    const otpauth = authenticator.keyuri(req.user.email, 'Anritvox OS', secret);
+    const otpauth = authenticator.keyuri(req.user.email, 'Anritvox Store', secret);
     const qrCodeUrl = await qrcode.toDataURL(otpauth);
     res.json({ secret, qrCode: qrCodeUrl });
   } catch (err) { res.status(500).json({ message: "Server error" }); }
 });
 
-// 3. Verify and Enable 2FA
 router.post('/2fa/enable', authenticateUser, async (req, res) => {
   try {
     const { token, secret } = req.body;
     const isValid = authenticator.verify({ token, secret });
-    if (!isValid) return res.status(400).json({ message: "Invalid OTP Token." });
+    if (!isValid) return res.status(400).json({ message: "Invalid Authenticator Code." });
 
     await pool.query('UPDATE users SET two_factor_secret=?, two_factor_enabled=1 WHERE id=?', [secret, req.user.id]);
     res.json({ message: "2FA Enabled Successfully." });
   } catch (err) { res.status(500).json({ message: "Server error" }); }
 });
 
-// 4. Disable 2FA
 router.post('/2fa/disable', authenticateUser, async (req, res) => {
   try {
     await pool.query('UPDATE users SET two_factor_secret=NULL, two_factor_enabled=0 WHERE id=?', [req.user.id]);
