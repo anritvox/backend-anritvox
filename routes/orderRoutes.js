@@ -63,17 +63,19 @@ router.put("/:id/status", authenticateAdmin, async (req, res) => {
   }
 });
 
+// ─── CUSTOMER ROUTES ──────────────────────────────────────────
+
 router.post("/", authenticateUser, async (req, res) => {
   try {
     const { addressId, deliveryType, paymentMode, couponCode, notes } = req.body;
-    if (!addressId) return res.status(400).json({ message: "addressId is required" });
+    if (!addressId) return res.status(400).json({ message: "Delivery address is required." });
 
     const addresses = await getAddressesByUser(req.user.id);
     const address = addresses.find((a) => a.id === parseInt(addressId, 10));
-    if (!address) return res.status(404).json({ message: "Address not found" });
+    if (!address) return res.status(404).json({ message: "Address not found." });
 
     const { items, total: cartTotal } = await getCartTotal(req.user.id);
-    if (!items.length) return res.status(400).json({ message: "Cart is empty" });
+    if (!items || items.length === 0) return res.status(400).json({ message: "Cart is empty." });
 
     let discount = 0;
     let resolvedCoupon = null;
@@ -96,7 +98,9 @@ router.post("/", authenticateUser, async (req, res) => {
       }
     }
 
-    const orderId = await createOrder(req.user.id, {
+    // FIX: Pass ALL properties as a single structured object to match the Model schema
+    const orderId = await createOrder({
+      userId: req.user.id,
       items,
       discount,
       couponCode: resolvedCoupon,
@@ -116,9 +120,6 @@ router.post("/", authenticateUser, async (req, res) => {
   }
 });
 
-/**
- * GET /api/orders/my (and alias) - Get user orders
- */
 router.get("/my", authenticateUser, async (req, res) => {
   try {
     const orders = await getOrdersByUser(req.user.id);
