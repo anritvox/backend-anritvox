@@ -15,7 +15,7 @@ const createUsersTable = async () => {
       -- Advanced Security Fields
       two_factor_secret VARCHAR(255),
       two_factor_enabled TINYINT(1) DEFAULT 0,
-      security_question VARCHAR(255) DEFAULT 'What was the designation of your first hardware build?',
+      security_question VARCHAR(255) DEFAULT 'What is your mother\\'s maiden name?',
       security_answer_hash VARCHAR(255),
       
       -- OTP Fields
@@ -28,9 +28,9 @@ const createUsersTable = async () => {
   `);
 };
 
-const createUser = async ({ name, email, password, phone, securityAnswer = 'anritvox-alpha' }) => {
+// FIX: Updated fallback to match the standard security question
+const createUser = async ({ name, email, password, phone, securityAnswer = 'default-answer' }) => {
   const hash = await bcrypt.hash(password, 10);
-  // Default security answer hash for the fallback system
   const secHash = await bcrypt.hash(securityAnswer.toLowerCase(), 10);
   
   const [result] = await pool.query(
