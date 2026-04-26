@@ -36,6 +36,12 @@ router.post('/', authenticateUser, async (req, res) => {
 // PUT /api/addresses/:id
 router.put('/:id', authenticateUser, async (req, res) => {
   try {
+    // FIX: Add strictly required validation logic to prevent database crash triggers
+    const { full_name, phone, line1, city, state, pincode } = req.body;
+    if (!full_name || !phone || !line1 || !city || !state || !pincode) {
+      return res.status(400).json({ message: 'Required fields missing' });
+    }
+
     await updateAddress(req.params.id, req.user.id, req.body);
     const list = await getAddressesByUser(req.user.id);
     return res.json(list);
