@@ -4,17 +4,25 @@ const pool = require("../config/db");
 const { authenticateUser, authenticateAdmin } = require("../middleware/authMiddleware");
 const { sendOrderStatusEmail } = require("../utils/mail");
 
-// Models
 const { 
   createOrder, 
   getOrdersByUser, 
   getOrderById, 
+  getAllOrders,
   updateOrderStatus 
 } = require("../models/orderModel");
 const { getCartTotal, clearCart } = require("../models/cartModel");
 const { getAddressesByUser } = require("../models/addressModel");
 
-// ─── ADMIN ROUTES ─────────────────────────────────────────────
+router.get("/all", authenticateAdmin, async (req, res) => {
+  try {
+    const orders = await getAllOrders();
+    return res.json(orders);
+  } catch (err) {
+    console.error("Admin Fetch Orders Error:", err);
+    return res.status(500).json({ message: "Failed to load global orders ledger" });
+  }
+});
 
 router.put("/:id/status", authenticateAdmin, async (req, res) => {
   const connection = await pool.getConnection();
@@ -27,33 +35,25 @@ router.put("/:id/status", authenticateAdmin, async (req, res) => {
       return res.status(400).json({ success: false, message: "Status is required" });
     }
 
-    // 1. Update Database Record
     await connection.query(
-      `UPDATE orders 
-       SET status = ?, tracking_number = ?, courier = ?, updated_at = NOW() 
-       WHERE id = ?`,
+      `UPDATE orders SET status = ?, tracking_number = ?, courier = ?, updated_at = NOW() WHERE id = ?`,
       [status, trackingNumber || null, courier || null, id]
     );
 
-    // 2. Fetch Customer Details for Email Payload
     const [orderData] = await connection.query(
-      `SELECT o.id, o.status, u.name, u.email 
-       FROM orders o 
-       JOIN users u ON o.user_id = u.id 
-       WHERE o.id = ?`,
+      `SELECT o.id, o.status, u.name, u.email FROM orders o JOIN users u ON o.user_id = u.id WHERE o.id = ?`,
       [id]
     );
 
     await connection.commit();
 
-    // 3. Dispatch Email Asynchronously (Non-blocking)
     if (orderData.length > 0) {
       const { email, name } = orderData[0];
       sendOrderStatusEmail(email, name, id, status, trackingNumber, courier)
-        .catch(err => console.error(`[Mailer] Failed to send email to ${email}:`, err));
+        .catch(err => console.error(`[Mailer] Failed to send email:`, err));
     }
 
-    res.json({ success: true, message: "Order status updated and customer notified." });
+    res.json({ success: true, message: "Order status updated." });
   } catch (err) {
     await connection.rollback();
     console.error("[OrderUpdate Error]:", err);
@@ -62,8 +62,6 @@ router.put("/:id/status", authenticateAdmin, async (req, res) => {
     connection.release();
   }
 });
-
-// ─── CUSTOMER ROUTES ──────────────────────────────────────────
 
 router.post("/", authenticateUser, async (req, res) => {
   try {
@@ -82,9 +80,7 @@ router.post("/", authenticateUser, async (req, res) => {
 
     if (couponCode) {
       const [coupons] = await pool.query(
-        `SELECT * FROM coupons WHERE code=? AND is_active=1
-         AND (valid_from IS NULL OR valid_from <= NOW())
-         AND (valid_until IS NULL OR valid_until >= NOW())`,
+        `SELECT * FROM coupons WHERE code=? AND is_active=1 AND (valid_from IS NULL OR valid_from <= NOW()) AND (valid_until IS NULL OR valid_until >= NOW())`,
         [couponCode.toUpperCase()]
       );
       const coupon = coupons[0];
@@ -98,7 +94,6 @@ router.post("/", authenticateUser, async (req, res) => {
       }
     }
 
-    // FIX: Pass ALL properties as a single structured object to match the Model schema
     const orderId = await createOrder({
       userId: req.user.id,
       items,
