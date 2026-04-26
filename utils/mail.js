@@ -1,11 +1,6 @@
-// utils/mail.js
-// Robust Mailjet mailer: SDK-first, HTTPS fallback with Order Status Templates.
-// Usage: sendMail({ to, subject, html, text }) or sendOrderStatusEmail(...)
-
 const https = require("https");
 const util = require("util");
 
-// Environment keys
 const MJ_PUBLIC =
   process.env.MAILJET_API_KEY ||
   process.env.MJ_APIKEY_PUBLIC ||
@@ -23,7 +18,6 @@ if (!MJ_PUBLIC || !MJ_PRIVATE) {
   );
 }
 
-/* ---------- Mailjet SDK Initialization ---------- */
 let mailjetClient = null;
 try {
   const mj = require("node-mailjet");
@@ -37,8 +31,6 @@ try {
 } catch (e) {
   console.warn("⚠️ Mailjet SDK not found; falling back to direct HTTPS calls.");
 }
-
-/* ---------- Internal Helpers ---------- */
 
 function normalizeRecipient(recipient) {
   if (!recipient) return [];
@@ -107,12 +99,6 @@ function httpSendMail(payload) {
   });
 }
 
-/* ---------- Primary Exported Functions ---------- */
-
-/**
- * sendMail(options)
- * Core engine for sending emails via Mailjet.
- */
 async function sendMail({
   to,
   cc,
@@ -161,78 +147,65 @@ async function sendMail({
   return httpSendMail(body);
 }
 
-/**
- * sendOrderStatusEmail(email, name, orderId, status, tracking, courier)
- * Specialized function for professionally formatted order updates.
- */
-const sendOrderStatusEmail = async (email, name, orderId, status, tracking = null, courier = null) => {
-  let statusMessage = "";
-  let color = "#3b82f6"; 
-  let trackingBlock = "";
+const sendOrderStatusEmail = async (email, name, orderId, status, trackingNumber = null, courier = null) => {
+  const formattedId = String(orderId).padStart(10, '0');
+  
+  const statusConfig = {
+    pending: { color: '#f59e0b', text: 'Pending Confirmation', msg: 'We have received your order and are currently reviewing it. We will notify you once it has been processed.' },
+    processing: { color: '#3b82f6', text: 'Processing Order', msg: 'Your order has been confirmed and our warehouse team is currently prepping it for dispatch.' },
+    shipped: { color: '#6366f1', text: 'Shipped / In Transit', msg: 'Great news! Your order has been dispatched and is currently on its way to your destination.' },
+    delivered: { color: '#10b981', text: 'Delivered', msg: 'Your package has been successfully delivered. We hope you enjoy your purchase!' },
+    cancelled: { color: '#ef4444', text: 'Order Cancelled', msg: 'Your order has been cancelled. Any applicable refunds will be processed shortly to your original payment method.' },
+    returned: { color: '#64748b', text: 'Return Processed', msg: 'We have received and processed your return request.' }
+  };
 
-  switch (status.toLowerCase()) {
-    case "processing":
-      statusMessage = "Your order is now being processed and packed.";
-      color = "#f59e0b"; 
-      break;
-    case "shipped":
-      statusMessage = "Great news! Your order has been shipped.";
-      color = "#8b5cf6"; 
-      if (tracking && courier) {
-        trackingBlock = `
-          <div style="background-color: #f3f4f6; padding: 15px; border-radius: 8px; margin-top: 20px; text-align: center;">
-            <p style="margin: 0; font-size: 14px; color: #4b5563; text-transform: uppercase; font-weight: bold;">Tracking Information</p>
-            <p style="margin: 5px 0 0 0; font-size: 18px; color: #111827; font-weight: 900; letter-spacing: 1px;">${tracking}</p>
-            <p style="margin: 5px 0 0 0; font-size: 12px; color: #6b7280;">Courier: ${courier}</p>
-          </div>
-        `;
-      }
-      break;
-    case "delivered":
-      statusMessage = "Your order has been delivered successfully. Enjoy your product!";
-      color = "#10b981"; 
-      break;
-    case "cancelled":
-      statusMessage = "Your order has been cancelled.";
-      color = "#ef4444"; 
-      break;
-    default:
-      statusMessage = `Your order status has been updated to: ${status}`;
+  const config = statusConfig[status.toLowerCase()] || statusConfig.pending;
+  
+  let trackingHtml = '';
+  if (trackingNumber && courier) {
+    trackingHtml = `
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-top: 20px;">
+        <h3 style="margin-top: 0; color: #0f172a; font-size: 16px;">Tracking Information</h3>
+        <p style="margin: 0; color: #475569; font-size: 14px;"><strong>Courier:</strong> ${courier}</p>
+        <p style="margin: 5px 0 15px 0; color: #475569; font-size: 14px;"><strong>Tracking ID:</strong> ${trackingNumber}</p>
+        <a href="https://www.google.com/search?q=${trackingNumber}+${courier}+tracking" style="display: inline-block; background-color: #0f172a; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; font-size: 14px;">Track Package</a>
+      </div>
+    `;
   }
 
   const htmlTemplate = `
-    <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-      <div style="background-color: #050505; padding: 30px; text-align: center; border-bottom: 4px solid ${color};">
-        <h1 style="color: #ffffff; margin: 0; font-size: 24px; letter-spacing: 2px;">ANRITVOX</h1>
+    <div style="font-family: 'Inter', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+      <div style="background-color: #0f172a; padding: 30px 20px; text-align: center;">
+        <h1 style="color: #ffffff; margin: 0; font-size: 24px; letter-spacing: -0.5px;">ANRITVOX STORE</h1>
       </div>
-      <div style="padding: 40px 30px; background-color: #ffffff;">
-        <h2 style="color: #111827; margin-top: 0;">Hello ${name},</h2>
-        <p style="color: #4b5563; font-size: 16px; line-height: 1.6;">
-          ${statusMessage}
+      <div style="padding: 40px 30px;">
+        <p style="color: #64748b; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; margin-bottom: 5px;">Order #${formattedId}</p>
+        <h2 style="color: ${config.color}; margin-top: 0; font-size: 28px; letter-spacing: -0.5px;">${config.text}</h2>
+        <p style="color: #334155; font-size: 16px; line-height: 1.6;">Hello ${name},</p>
+        <p style="color: #475569; font-size: 16px; line-height: 1.6;">${config.msg}</p>
+        ${trackingHtml}
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+        <p style="color: #64748b; font-size: 14px; text-align: center; margin: 0;">
+          Need help? <a href="https://anritvox.com/support" style="color: #3b82f6; text-decoration: none;">Contact our Support Team</a>
         </p>
-        <div style="margin-top: 25px; border-left: 4px solid ${color}; padding-left: 15px;">
-          <p style="margin: 0; font-size: 14px; color: #6b7280; text-transform: uppercase; font-weight: bold;">Order Reference</p>
-          <p style="margin: 5px 0 0 0; font-size: 18px; color: #111827; font-weight: bold;">#${orderId}</p>
-        </div>
-        ${trackingBlock}
-        <p style="color: #6b7280; font-size: 14px; margin-top: 40px; border-top: 1px solid #e5e7eb; padding-top: 20px;">
-          If you have any questions about your shipment, please reply to this email or contact our support team.
-        </p>
+      </div>
+      <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
+        <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} Anritvox. All rights reserved.</p>
       </div>
     </div>
   `;
 
-  return sendMail({
-    to: email,
-    subject: `Order Update: #${orderId} - ${status.toUpperCase()}`,
-    html: htmlTemplate
-  });
+  try {
+    return await sendMail({
+      to: email,
+      subject: `Order Update: #${formattedId} is ${config.text}`,
+      html: htmlTemplate
+    });
+  } catch (error) {
+    console.error("Failed to send high-end status email:", error);
+  }
 };
 
-/**
- * verifyTransport()
- * Verifies Mailjet credentials by making a lightweight API call.
- */
 async function verifyTransport() {
   if (!MJ_PUBLIC || !MJ_PRIVATE) throw new Error("Mailjet API keys not set");
   const auth = Buffer.from(`${MJ_PUBLIC}:${MJ_PRIVATE}`).toString("base64");
