@@ -5,6 +5,7 @@ const pool = require('../config/db');
 const { sendMail } = require('../utils/mail');
 const { registerLimiter, loginLimiter, otpLimiter } = require('../middleware/rateLimiter');
 const { authenticateAdmin } = require('../middleware/authMiddleware');
+const { authenticator } = require('otplib'); // ADDED: Real 2FA Engine
 
 const { getAdminByEmail, getAdminById, verifyPassword: verifyAdminPassword, updateAdminPassword } = require("../models/adminModel");
 const { 
@@ -48,7 +49,6 @@ router.post("/login", loginLimiter, async (req, res) => {
     const validCustomer = await verifyCustomerPassword(password, customer.password_hash);
     if (!validCustomer) return res.status(401).json({ message: "Invalid credentials" });
 
-    // MFA Intercept Logic
     if (customer.two_factor_enabled) {
       return res.status(202).json({ requires2FA: true, message: "MFA Verification Required", email: customer.email });
     }
@@ -61,6 +61,7 @@ router.post("/login", loginLimiter, async (req, res) => {
   }
 });
 
+// FIX: Real Authenticator Validation Implementation
 router.post("/2fa/verify", otpLimiter, async (req, res) => {
   try {
     const { email, otp } = req.body;
@@ -69,7 +70,10 @@ router.post("/2fa/verify", otpLimiter, async (req, res) => {
     const customer = await getUserByEmail(email);
     if (!customer) return res.status(404).json({ message: "Node not found." });
 
-    if (otp !== "123456" && otp !== customer.reset_otp) {
+    if (customer.two_factor_enabled && customer.two_factor_secret) {
+      const isValid = authenticator.verify({ token: otp, secret: customer.two_factor_secret });
+      if (!isValid) return res.status(401).json({ message: "Invalid MFA Token." });
+    } else if (otp !== customer.reset_otp) {
       return res.status(401).json({ message: "Invalid MFA Token." });
     }
 
@@ -89,17 +93,15 @@ router.post("/forgot-password", otpLimiter, async (req, res) => {
     if (!user) return res.status(404).json({ message: "Designation not found in registry." });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes
+    const otpExpiry = Date.now() + 10 * 60 * 1000; 
 
-    // 1. Try to save to DB
     try {
       await saveResetOtp(user.id, otp, otpExpiry);
     } catch (dbErr) {
       console.error("DATABASE ERROR saving OTP:", dbErr);
-      return res.status(500).json({ message: "Database failure. Did you run the ALTER TABLE command?" });
+      return res.status(500).json({ message: "Database failure." });
     }
 
-    // 2. Try to send Email
     try {
       await sendMail({
         to: email, 
@@ -182,7 +184,7 @@ router.post("/security-question/verify", otpLimiter, async (req, res) => {
 
 router.post("/register", registerLimiter, async (req, res) => {
   try {
-    const { name, email, password, phone, securityAnswer } = req.body;
+    const { name, email, password, phone } = req.body; // securityAnswer processed in phase 2 now
     if (!name || !email || !password) return res.status(400).json({ message: "Name, email, and password are required" });
 
     const emailDomain = email.split('@')[1].toLowerCase();
@@ -194,7 +196,6 @@ router.post("/register", registerLimiter, async (req, res) => {
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const hashedPassword = await bcrypt.hash(password, 10);
-    const secHash = securityAnswer ? await bcrypt.hash(securityAnswer.toLowerCase(), 10) : null;
     const otpExpiry = new Date(Date.now() + 10 * 60 * 1000);
 
     await pool.query(
@@ -218,9 +219,10 @@ router.post("/register", registerLimiter, async (req, res) => {
   }
 });
 
+// FIX: Intercept the passed securityAnswer to map securely without altering pending tables
 router.post("/verify-email", otpLimiter, async (req, res) => {
   try {
-    const { email, otp } = req.body;
+    const { email, otp, securityAnswer } = req.body;
     if (!email || !otp) return res.status(400).json({ message: "Email and OTP required" });
 
     const [rows] = await pool.query('SELECT * FROM pending_registrations WHERE email = ?', [email]);
@@ -230,7 +232,8 @@ router.post("/verify-email", otpLimiter, async (req, res) => {
     if (pending.otp !== otp) return res.status(400).json({ message: "Invalid OTP" });
     if (new Date() > new Date(pending.otp_expiry)) return res.status(400).json({ message: "OTP expired." });
 
-    const insertId = await createUser({ name: pending.name, email: pending.email, password: pending.password, phone: pending.phone });
+    // Directly bind the passed security answer here to circumvent DB limitations
+    const insertId = await createUser({ name: pending.name, email: pending.email, password: pending.password, phone: pending.phone, securityAnswer: securityAnswer });
     await pool.query('DELETE FROM pending_registrations WHERE email = ?', [email]);
 
     const user = await getUserById(insertId);
