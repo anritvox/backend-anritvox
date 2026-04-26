@@ -5,7 +5,9 @@ const pool = require('../config/db');
 const { sendMail } = require('../utils/mail');
 const { registerLimiter, loginLimiter, otpLimiter } = require('../middleware/rateLimiter');
 const { authenticateAdmin } = require('../middleware/authMiddleware');
-const { authenticator } = require('otplib'); // ADDED: Real 2FA Engine
+const { authenticator } = require('otplib');
+
+authenticator.options = { window: 1 };
 
 const { getAdminByEmail, getAdminById, verifyPassword: verifyAdminPassword, updateAdminPassword } = require("../models/adminModel");
 const { 
@@ -61,18 +63,18 @@ router.post("/login", loginLimiter, async (req, res) => {
   }
 });
 
-// FIX: Real Authenticator Validation Implementation
 router.post("/2fa/verify", otpLimiter, async (req, res) => {
   try {
     const { email, otp } = req.body;
     if (!email || !otp) return res.status(400).json({ message: "Email and OTP required" });
 
     const customer = await getUserByEmail(email);
-    if (!customer) return res.status(404).json({ message: "Node not found." });
+    if (!customer) return res.status(404).json({ message: "Account not found." });
 
     if (customer.two_factor_enabled && customer.two_factor_secret) {
+    
       const isValid = authenticator.verify({ token: otp, secret: customer.two_factor_secret });
-      if (!isValid) return res.status(401).json({ message: "Invalid MFA Token." });
+      if (!isValid) return res.status(401).json({ message: "Invalid 2FA Token." });
     } else if (otp !== customer.reset_otp) {
       return res.status(401).json({ message: "Invalid MFA Token." });
     }
@@ -90,38 +92,28 @@ router.post("/forgot-password", otpLimiter, async (req, res) => {
     const { email } = req.body;
     const user = await getUserByEmail(email);
     
-    if (!user) return res.status(404).json({ message: "Designation not found in registry." });
+    if (!user) return res.status(404).json({ message: "Email not found in our records." });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpiry = Date.now() + 10 * 60 * 1000; 
 
-    try {
-      await saveResetOtp(user.id, otp, otpExpiry);
-    } catch (dbErr) {
-      console.error("DATABASE ERROR saving OTP:", dbErr);
-      return res.status(500).json({ message: "Database failure." });
-    }
+    await saveResetOtp(user.id, otp, otpExpiry);
 
-    try {
-      await sendMail({
-        to: email, 
-        subject: 'Security Key Recovery Protocol', 
-        html: `<div style="font-family: sans-serif; background: #0f172a; color: #fff; padding: 40px; border-radius: 12px; text-align: center;">
-                <h2 style="color: #10b981;">Hardware Node Access</h2>
-                <p style="color: #94a3b8;">A request was made to recover the security key for this node.</p>
-                <div style="background: #020617; border: 1px solid #1e293b; padding: 20px; font-size: 24px; font-weight: bold; letter-spacing: 5px; margin: 20px 0;">${otp}</div>
-                <p style="color: #64748b; font-size: 12px;">Token self-destructs in 10 minutes.</p>
-              </div>`
-      });
-    } catch (mailErr) {
-      console.error("MAILJET ERROR:", mailErr);
-      return res.status(500).json({ message: "Email dispatch failed. Verify Mailjet API keys in .env." });
-    }
+    await sendMail({
+      to: email, 
+      subject: 'Password Recovery Code', 
+      html: `<div style="font-family: sans-serif; background: #f8fafc; color: #0f172a; padding: 40px; border-radius: 12px; text-align: center;">
+              <h2 style="color: #10b981;">Password Reset</h2>
+              <p style="color: #64748b;">A request was made to reset your password.</p>
+              <div style="background: #ffffff; border: 1px solid #e2e8f0; padding: 20px; font-size: 24px; font-weight: bold; letter-spacing: 5px; margin: 20px 0;">${otp}</div>
+              <p style="color: #64748b; font-size: 12px;">Code expires in 10 minutes.</p>
+            </div>`
+    });
 
-    res.json({ message: "Recovery token dispatched." });
+    res.json({ message: "Recovery email sent." });
   } catch (err) {
     console.error("Forgot Password Fatal Error:", err);
-    res.status(500).json({ message: "Fatal Server Error." });
+    res.status(500).json({ message: "Server Error." });
   }
 });
 
@@ -131,12 +123,11 @@ router.post("/verify-otp", otpLimiter, async (req, res) => {
     const user = await getUserByEmail(email);
 
     if (!user) return res.status(404).json({ message: "User not found." });
-    if (user.reset_otp !== otp) return res.status(400).json({ message: "Invalid Token." });
-    if (Date.now() > user.reset_otp_expires) return res.status(400).json({ message: "Token Expired." });
+    if (user.reset_otp !== otp) return res.status(400).json({ message: "Invalid Code." });
+    if (Date.now() > user.reset_otp_expires) return res.status(400).json({ message: "Code Expired." });
 
-    res.json({ success: true, message: "Token verified. Awaiting new key." });
+    res.json({ success: true, message: "Code verified." });
   } catch (err) {
-    console.error("Verify OTP Error:", err);
     res.status(500).json({ message: "Server Error" });
   }
 });
@@ -149,17 +140,16 @@ router.post("/reset-password", otpLimiter, async (req, res) => {
     if (!user) return res.status(404).json({ message: "User not found." });
     
     if (!securityBypass) {
-      if (user.reset_otp !== otp) return res.status(400).json({ message: "Invalid Token." });
-      if (Date.now() > user.reset_otp_expires) return res.status(400).json({ message: "Token Expired." });
+      if (user.reset_otp !== otp) return res.status(400).json({ message: "Invalid Code." });
+      if (Date.now() > user.reset_otp_expires) return res.status(400).json({ message: "Code Expired." });
     }
 
     const hash = await bcrypt.hash(newPassword, 10);
     await updateUserPassword(user.id, hash);
     await clearResetOtp(user.id);
 
-    res.json({ message: "Master key updated successfully." });
+    res.json({ message: "Password updated successfully." });
   } catch (err) {
-    console.error("Reset Password Error:", err);
     res.status(500).json({ message: "Server Error" });
   }
 });
@@ -169,27 +159,26 @@ router.post("/security-question/verify", otpLimiter, async (req, res) => {
     const { email, answer } = req.body;
     const user = await getUserByEmail(email);
 
-    if (!user) return res.status(404).json({ message: "Node not found." });
-    if (!user.security_answer_hash) return res.status(400).json({ message: "No security question configured for this node." });
+    if (!user) return res.status(404).json({ message: "Account not found." });
+    if (!user.security_answer_hash) return res.status(400).json({ message: "No security question configured." });
 
     const isValid = await verifySecurityAnswer(answer, user.security_answer_hash);
-    if (!isValid) return res.status(401).json({ message: "Identity verification failed." });
+    if (!isValid) return res.status(401).json({ message: "Incorrect answer." });
 
     res.json({ success: true, securityBypass: true });
   } catch (err) {
-    console.error("Security Question Error:", err);
     res.status(500).json({ message: "Server Error" });
   }
 });
 
 router.post("/register", registerLimiter, async (req, res) => {
   try {
-    const { name, email, password, phone } = req.body; // securityAnswer processed in phase 2 now
+    const { name, email, password, phone } = req.body; 
     if (!name || !email || !password) return res.status(400).json({ message: "Name, email, and password are required" });
 
     const emailDomain = email.split('@')[1].toLowerCase();
     if (DISPOSABLE_DOMAINS.includes(emailDomain)) return res.status(400).json({ message: "Disposable emails not allowed" });
-    if (password.length < 8) return res.status(400).json({ message: "Password must be at least 8 characters" });
+    if (password.length < 6) return res.status(400).json({ message: "Password must be at least 6 characters" });
 
     const existingUser = await getUserByEmail(email);
     if (existingUser) return res.status(409).json({ message: "Email already registered" });
@@ -203,23 +192,16 @@ router.post("/register", registerLimiter, async (req, res) => {
       [name, email, hashedPassword, phone, otp, otpExpiry, otp, otpExpiry]
     );
 
-    try {
-      await sendMail({
-        to: email, subject: 'Verify your Anritvox account', html: `<h3>Welcome to Anritvox!</h3><p>Your verification code is: <strong>${otp}</strong></p>`
-      });
-    } catch (mailErr) {
-       console.error("Register Mailjet Error:", mailErr);
-       return res.status(500).json({ message: "Failed to dispatch email. Check Mailjet keys." });
-    }
+    await sendMail({
+      to: email, subject: 'Verify your Account', html: `<h3>Welcome!</h3><p>Your verification code is: <strong>${otp}</strong></p>`
+    });
 
     res.json({ success: true, message: "OTP sent to email." });
   } catch (err) { 
-    console.error("Register Error:", err);
     res.status(500).json({ message: "Server error" }); 
   }
 });
 
-// FIX: Intercept the passed securityAnswer to map securely without altering pending tables
 router.post("/verify-email", otpLimiter, async (req, res) => {
   try {
     const { email, otp, securityAnswer } = req.body;
@@ -232,7 +214,6 @@ router.post("/verify-email", otpLimiter, async (req, res) => {
     if (pending.otp !== otp) return res.status(400).json({ message: "Invalid OTP" });
     if (new Date() > new Date(pending.otp_expiry)) return res.status(400).json({ message: "OTP expired." });
 
-    // Directly bind the passed security answer here to circumvent DB limitations
     const insertId = await createUser({ name: pending.name, email: pending.email, password: pending.password, phone: pending.phone, securityAnswer: securityAnswer });
     await pool.query('DELETE FROM pending_registrations WHERE email = ?', [email]);
 
@@ -241,7 +222,6 @@ router.post("/verify-email", otpLimiter, async (req, res) => {
 
     res.status(201).json({ success: true, token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
   } catch (err) { 
-    console.error("Verify Email Error:", err);
     res.status(500).json({ message: "Server error" }); 
   }
 });
