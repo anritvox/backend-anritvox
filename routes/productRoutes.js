@@ -62,7 +62,7 @@ router.get('/', authenticateAdmin, async (req, res) => {
   }
 });
 
-// 3. GET PRODUCT BY SLUG (Public)
+// 3. GET PRODUCT BY SLUG (Legacy Fallback - Public)
 router.get('/slug/:slug', async (req, res) => {
   try {
     const [rows] = await pool.query(`
@@ -216,19 +216,34 @@ router.delete('/:id', authenticateAdmin, async (req, res) => {
   }
 });
 
-// 13. GET PRODUCT BY ID (Public)
-router.get('/:id', async (req, res) => {
+// 13. GET PRODUCT BY SMART IDENTIFIER (ID or SEO Slug) (Public)
+router.get('/:identifier', async (req, res) => {
   try {
-    const productId = parseInt(req.params.id, 10);
-    if (isNaN(productId)) return res.status(400).json({ success: false, message: 'Invalid ID format' });
-    const [rows] = await pool.query(`
+    const { identifier } = req.params;
+    const isNumeric = /^\d+$/.test(identifier); // Strictly evaluates if the param is numbers only
+
+    let query = `
       SELECT p.*, 
       (SELECT JSON_ARRAYAGG(file_path) FROM product_images WHERE product_id = p.id) as images
-      FROM products p WHERE p.id = ?
-    `, [productId]);
-    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Product node not found by ID' });
+      FROM products p
+    `;
+    let params = [identifier];
+
+    if (isNumeric) {
+      query += ` WHERE p.id = ?`;
+    } else {
+      query += ` WHERE p.slug = ? AND p.status = 'active'`;
+    }
+
+    const [rows] = await pool.query(query, params);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+    
     res.json({ success: true, data: parseImages(rows)[0] });
   } catch (error) {
+    console.error("Smart Identifier Route Error:", error);
     res.status(500).json({ success: false, message: 'Database query failed' });
   }
 });
