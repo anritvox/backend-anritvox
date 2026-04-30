@@ -38,7 +38,7 @@ const { initCategoriesTable } = require("./models/categoryModel");
 
 const app = express();
 
-// 1. PRIMARY CORS CONFIGURATION (Moved to Top)
+// 1. PRIMARY CORS CONFIGURATION
 const allowedOrigins = [
   "https://www.anritvox.com",
   "https://anritvox.com",
@@ -48,7 +48,6 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl)
     if (!origin) return callback(null, true);
     
     const isAllowed = allowedOrigins.includes(origin) || 
@@ -58,7 +57,7 @@ const corsOptions = {
     if (isAllowed) {
       callback(null, true);
     } else {
-      console.log("CORS Rejected Origin:", origin);
+      console.log("[Security] CORS Rejected Origin:", origin);
       callback(new Error("Not allowed by CORS"));
     }
   },
@@ -69,30 +68,16 @@ const corsOptions = {
   optionsSuccessStatus: 204
 };
 
-// Apply CORS middleware
+// Apply CORS middleware globally
 app.use(cors(corsOptions));
 
-// Handle preflight requests for all routes - using regex to avoid Express 5 PathError
-app.options(/(.*)/,  cors(corsOptions));
+// Handle preflight requests for all routes cleanly
+app.options('*', cors(corsOptions));
 
-// 2. ADDITIONAL SECURITY HEADERS (Manual Fallback)
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (allowedOrigins.includes(origin) || (origin && origin.endsWith(".vercel.app"))) {
-    res.header("Access-Control-Allow-Origin", origin);
-  }
-  res.header("Access-Control-Allow-Credentials", "true");
-  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept, Origin");
-  
-  if (req.method === "OPTIONS") {
-    return res.status(204).send();
-  }
-  next();
-});
-
+// Proxy Trust and Body Parsers
 app.set("trust proxy", 1);
 app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" })); // Added to prevent payload crashes on form submissions
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // ROUTES
@@ -120,7 +105,7 @@ app.use("/api/returns", returnRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/banners", bannerRoutes);
 
-app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running on Railway!" }));
+app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running!" }));
 
 async function initDB() {
   try {
