@@ -6,6 +6,7 @@ const path = require("path");
 const bcrypt = require("bcrypt");
 
 // ROUTE IMPORTS
+
 const categoryRoutes = require("./routes/categoryRoutes");
 const searchRoutes = require("./routes/searchRoutes");
 const flashSalesRoutes = require("./routes/flashSalesRoutes");
@@ -33,14 +34,15 @@ const bannerRoutes = require("./routes/bannerRoutes");
 const fitmentRoutes = require("./routes/fitmentRoutes");
 
 // MODEL INITIALIZATION IMPORTS
+const { initWalletTables } = require("./models/walletModel");
 const { createBannerTable } = require("./models/bannerModel");
 const { createCartTable } = require("./models/cartModel");
 const { createOrdersTables } = require("./models/orderModel");
 const { createAddressTable } = require("./models/addressModel");
 const { initProductsTable } = require("./models/productModel");
 const { initCategoriesTable } = require("./models/categoryModel");
-const { initReturnsTable } = require("./models/returnModel"); // SPRINT 2
-const { initContactTable } = require("./models/contactModel"); // SPRINT 2
+const { initReturnsTable } = require("./models/returnModel"); 
+const { initContactTable } = require("./models/contactModel"); 
 
 const app = express();
 
@@ -124,11 +126,12 @@ async function initDB() {
     await initCategoriesTable();
     await initProductsTable();
     await createAddressTable();
+    await initWalletTables();
     await createCartTable();
     await createOrdersTables();
     await createBannerTable();
-    await initReturnsTable();  // SPRINT 2 INITIALIZATION
-    await initContactTable();  // SPRINT 2 INITIALIZATION
+    await initReturnsTable(); 
+    await initContactTable();
     
     // Check for Master Admin
     try {
