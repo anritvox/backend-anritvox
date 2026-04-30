@@ -14,7 +14,7 @@
     "node": "18.x"
   },
   "dependencies": {
-    "openai": "^4.0.0",
+    "@xenova/transformers": "^2.16.0",
     "@pinecone-database/pinecone": "^2.0.0",
     "@aws-sdk/client-s3": "^3.859.0",
     "react-google-recaptcha-v3": "^1.10.1",
