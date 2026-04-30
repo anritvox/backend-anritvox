@@ -71,8 +71,13 @@ const corsOptions = {
 // Apply CORS middleware globally
 app.use(cors(corsOptions));
 
-// Handle preflight requests for all routes (Express 5.x compliant syntax)
-app.options('/*', cors(corsOptions));
+// Express 5+ Bulletproof Preflight Interceptor (Bypasses path-to-regexp entirely)
+app.use((req, res, next) => {
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
+  next();
+});
 
 // Proxy Trust and Body Parsers
 app.set("trust proxy", 1);
