@@ -18,6 +18,7 @@ const createOrder = async ({
     let backendSubtotal = 0;
     const processedItems = [];
 
+    // 1. Validate Stock and Calculate Subtotal
     for (const item of items) {
       const productId = item.product_id || item.id;
       const [dbProducts] = await conn.query(
@@ -40,11 +41,12 @@ const createOrder = async ({
     const shippingCharge = deliveryType === 'express' ? 99 : 0;
     const backendTotal = Math.max(0, backendSubtotal + shippingCharge - parseFloat(discount || 0));
 
-    // --- WALLET DEDUCTION ---
+    // 2. Handle Wallet Payment
     if (paymentMode === 'WALLET') {
       await adjustWallet(conn, userId, backendTotal, 'debit', `Order Payment`, null);
     }
 
+    // 3. Create Order Record
     const [res] = await conn.query(
       `INSERT INTO orders (user_id, subtotal, discount, total, coupon_code, address_snapshot, delivery_type, payment_mode, notes, payment_status)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -52,9 +54,37 @@ const createOrder = async ({
     );
 
     const orderId = res.insertId;
+
+    // 4. Insert Order Items
     for (const pItem of processedItems) {
       await conn.query(`INSERT INTO order_items (order_id, product_id, name, price, quantity) VALUES (?,?,?,?,?)`,
         [orderId, pItem.product_id, pItem.name, pItem.price, pItem.quantity]);
+    }
+
+    // --- 5. LOYALTY LOGIC (NEW) ---
+    const pointsEarned = Math.floor(backendTotal / 100);
+
+    // Update user points, total spend, and dynamic tiering
+    await conn.query(
+      `UPDATE users 
+       SET loyalty_points = loyalty_points + ?, 
+           total_spent = total_spent + ?,
+           membership_tier = CASE 
+             WHEN (total_spent + ?) >= 100000 THEN 'platinum'
+             WHEN (total_spent + ?) >= 50000 THEN 'gold'
+             WHEN (total_spent + ?) >= 10000 THEN 'silver'
+             ELSE 'bronze'
+           END
+       WHERE id = ?`,
+      [pointsEarned, backendTotal, backendTotal, backendTotal, backendTotal, userId]
+    );
+
+    // Notify user of points earned
+    if (pointsEarned > 0) {
+      await conn.query(
+        'INSERT INTO notifications (user_id, message) VALUES (?, ?)',
+        [userId, `You earned ${pointsEarned} Anritvox Points! Check out your new tier status.`]
+      );
     }
 
     await conn.commit();
@@ -67,4 +97,4 @@ const createOrder = async ({
   }
 };
 
-module.exports = { createOrder }; // Simplified for length
+module.exports = { createOrder };
