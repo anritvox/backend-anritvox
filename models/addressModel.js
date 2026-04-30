@@ -1,9 +1,5 @@
 const pool = require('../config/db');
 
-/**
- * Initializes the addresses table if it doesn't exist.
- * Matches the schema used in the model functions below.
- */
 async function createAddressTable() {
   const query = `
     CREATE TABLE IF NOT EXISTS addresses (
@@ -33,10 +29,7 @@ async function createAddressTable() {
 }
 
 const AddressModel = {
-  /**
-   * Create a new address for a user.
-   * Logic: If is_default is true, it resets other addresses for that user first.
-   */
+
   createAddress: async (userId, data) => {
     const { 
       full_name, 
@@ -117,10 +110,10 @@ const AddressModel = {
     try {
       await connection.beginTransaction();
       
-      // Step 1: Remove default status from all user addresses
+
       await connection.query('UPDATE addresses SET is_default = FALSE WHERE user_id = ?', [userId]);
       
-      // Step 2: Set the specific address as default
+     
       const [result] = await connection.query(
         'UPDATE addresses SET is_default = TRUE WHERE id = ? AND user_id = ?', 
         [addressId, userId]
@@ -137,9 +130,7 @@ const AddressModel = {
     }
   },
 
-  /**
-   * Remove an address record.
-   */
+
   deleteAddress: async (userId, addressId) => {
     try {
       const [result] = await pool.query(
