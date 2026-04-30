@@ -6,6 +6,7 @@ const path = require("path");
 const bcrypt = require("bcrypt");
 
 const categoryRoutes = require("./routes/categoryRoutes");
+const flashSalesRoutes = require("./routes/flashSalesRoutes");
 const subcategoryRoutes = require("./routes/subcategoryRoutes");
 const productRoutes = require("./routes/productRoutes");
 const warrantyRoutes = require("./routes/warrantyRoutes");
@@ -86,6 +87,7 @@ app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // ROUTES
+app.use("/api/flash-sales", flashSalesRoutes);
 app.use("/api/fitments", fitmentRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/subcategories", subcategoryRoutes);
