@@ -71,13 +71,13 @@ const corsOptions = {
 // Apply CORS middleware globally
 app.use(cors(corsOptions));
 
-// Handle preflight requests for all routes cleanly
-app.options('*', cors(corsOptions));
+// Handle preflight requests for all routes (Express 5.x compliant syntax)
+app.options('/*', cors(corsOptions));
 
 // Proxy Trust and Body Parsers
 app.set("trust proxy", 1);
 app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" })); // Added to prevent payload crashes on form submissions
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // ROUTES
