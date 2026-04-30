@@ -6,6 +6,7 @@ const path = require("path");
 const bcrypt = require("bcrypt");
 
 const categoryRoutes = require("./routes/categoryRoutes");
+const searchRoutes = require("./routes/searchRoutes");
 const flashSalesRoutes = require("./routes/flashSalesRoutes");
 const subcategoryRoutes = require("./routes/subcategoryRoutes");
 const productRoutes = require("./routes/productRoutes");
@@ -87,6 +88,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // ROUTES
 app.use("/api/flash-sales", flashSalesRoutes);
+app.use("/api/search", searchRoutes);
 app.use("/api/fitments", fitmentRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/subcategories", subcategoryRoutes);
