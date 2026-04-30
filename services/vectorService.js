@@ -1,20 +1,35 @@
-const { OpenAI } = require('openai');
 const { Pinecone } = require('@pinecone-database/pinecone');
 const pool = require('../config/db');
 
-// Initialize AI and Vector DB clients
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const pinecone = new Pinecone({ apiKey: process.env.PINECONE_API_KEY });
 const indexName = 'anritvox-products';
 
-async function generateEmbedding(text) {
-  const response = await openai.embeddings.create({
-    model: "text-embedding-3-small",
-    input: text,
-  });
-  return response.data[0].embedding;
+// Singleton pattern to load the AI model once in memory
+let extractorPipeline;
+
+async function getExtractor() {
+  if (!extractorPipeline) {
+    // Dynamically import the local AI model
+    const { pipeline } = await import('@xenova/transformers');
+    // Using MiniLM: extremely fast, lightweight, and 100% free
+    extractorPipeline = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+  }
+  return extractorPipeline;
 }
 
+/**
+ * Generates an embedding vector locally (Free)
+ */
+async function generateEmbedding(text) {
+  const extractor = await getExtractor();
+  // Generate the 384-dimensional vector
+  const output = await extractor(text, { pooling: 'mean', normalize: true });
+  return Array.from(output.data);
+}
+
+/**
+ * Synchronizes a product to the Vector Database
+ */
 async function syncProductToVectorDB(product) {
   try {
     const index = pinecone.index(indexName);
@@ -47,6 +62,9 @@ async function syncProductToVectorDB(product) {
   }
 }
 
+/**
+ * Performs a Semantic AI Search
+ */
 async function performSemanticSearch(userQuery, limit = 10) {
   try {
     const index = pinecone.index(indexName);
