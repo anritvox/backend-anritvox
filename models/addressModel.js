@@ -1,56 +1,84 @@
-// backend/models/addressModel.js
 const pool = require('../config/db');
 
-const createAddressTable = async () => {
-  await pool.query(`
+async function createAddressTable() {
+  const query = `
     CREATE TABLE IF NOT EXISTS addresses (
       id INT AUTO_INCREMENT PRIMARY KEY,
       user_id INT NOT NULL,
       full_name VARCHAR(100) NOT NULL,
-      phone VARCHAR(20) NOT NULL,
-      line1 VARCHAR(255) NOT NULL,
-      line2 VARCHAR(255),
+      phone_number VARCHAR(20) NOT NULL,
+      street_address TEXT NOT NULL,
       city VARCHAR(100) NOT NULL,
       state VARCHAR(100) NOT NULL,
-      pincode VARCHAR(10) NOT NULL,
-      is_default TINYINT(1) DEFAULT 0,
+      postal_code VARCHAR(20) NOT NULL,
+      country VARCHAR(100) DEFAULT 'India',
+      is_default BOOLEAN DEFAULT FALSE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-};
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  `;
 
-const getAddressesByUser = async (userId) => {
-  const [rows] = await pool.query(
-    'SELECT * FROM addresses WHERE user_id=? ORDER BY is_default DESC, id DESC',
-    [userId]
-  );
-  return rows;
-};
-
-const createAddress = async (userId, data) => {
-  if (data.is_default) {
-    await pool.query('UPDATE addresses SET is_default=0 WHERE user_id=?', [userId]);
+  try {
+    await pool.query(query);
+    console.log("[DB] Addresses table ready.");
+  } catch (error) {
+    console.error("[DB] Error initializing addresses table:", error);
+    throw error;
   }
-  const [result] = await pool.query(
-    `INSERT INTO addresses (user_id,full_name,phone,line1,line2,city,state,pincode,is_default) VALUES (?,?,?,?,?,?,?,?,?)`,
-    [userId, data.full_name, data.phone, data.line1, data.line2||null, data.city, data.state, data.pincode, data.is_default?1:0]
-  );
-  return result.insertId;
-};
+}
 
-const updateAddress = async (id, userId, data) => {
-  if (data.is_default) {
-    await pool.query('UPDATE addresses SET is_default=0 WHERE user_id=?', [userId]);
+const AddressModel = {
+  createAddress: async (userId, data) => {
+    const { full_name, phone_number, street_address, city, state, postal_code, country, is_default } = data;
+    
+    // If this is the new default, unset the old default first
+    if (is_default) {
+      await pool.query('UPDATE addresses SET is_default = FALSE WHERE user_id = ?', [userId]);
+    }
+
+    const [result] = await pool.query(
+      `INSERT INTO addresses (user_id, full_name, phone_number, street_address, city, state, postal_code, country, is_default) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [userId, full_name, phone_number, street_address, city, state, postal_code, country || 'India', is_default ? 1 : 0]
+    );
+    return result.insertId;
+  },
+
+  getUserAddresses: async (userId) => {
+    const [rows] = await pool.query('SELECT * FROM addresses WHERE user_id = ? ORDER BY is_default DESC, created_at DESC', [userId]);
+    return rows;
+  },
+
+  getDefaultAddress: async (userId) => {
+    const [rows] = await pool.query('SELECT * FROM addresses WHERE user_id = ? AND is_default = TRUE LIMIT 1', [userId]);
+    return rows[0] || null;
+  },
+
+  setAsDefault: async (userId, addressId) => {
+    // Transactional logic: Unset all, then set the specific one
+    const connection = await pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      await connection.query('UPDATE addresses SET is_default = FALSE WHERE user_id = ?', [userId]);
+      await connection.query('UPDATE addresses SET is_default = TRUE WHERE id = ? AND user_id = ?', [addressId, userId]);
+      await connection.commit();
+      return true;
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    } finally {
+      connection.release();
+    }
+  },
+
+  deleteAddress: async (userId, addressId) => {
+    const [result] = await pool.query('DELETE FROM addresses WHERE id = ? AND user_id = ?', [addressId, userId]);
+    return result.affectedRows > 0;
   }
-  await pool.query(
-    `UPDATE addresses SET full_name=?,phone=?,line1=?,line2=?,city=?,state=?,pincode=?,is_default=? WHERE id=? AND user_id=?`,
-    [data.full_name, data.phone, data.line1, data.line2||null, data.city, data.state, data.pincode, data.is_default?1:0, id, userId]
-  );
 };
 
-const deleteAddress = async (id, userId) => {
-  await pool.query('DELETE FROM addresses WHERE id=? AND user_id=?', [id, userId]);
+module.exports = {
+  createAddressTable,
+  AddressModel
 };
-
-module.exports = { getAddressesByUser, createAddress, updateAddress, deleteAddress, createAddressTable };
