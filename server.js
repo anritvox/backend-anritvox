@@ -39,7 +39,6 @@ const { initCategoriesTable } = require("./models/categoryModel");
 
 const app = express();
 
-// 1. PRIMARY CORS CONFIGURATION
 const allowedOrigins = [
   "https://www.anritvox.com",
   "https://anritvox.com",
