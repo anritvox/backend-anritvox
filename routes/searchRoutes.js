@@ -58,5 +58,39 @@ router.get('/', async (req, res) => {
     res.status(500).json({ success: false, message: 'Search operation failed' });
   }
 });
+const { syncProductToVectorDB } = require('../services/vectorService');
+const { authenticateAdmin } = require('../middleware/authMiddleware');
 
+// POST /api/search/sync-all (Admin Only - Run this once to fill Pinecone)
+router.post('/sync-all', authenticateAdmin, async (req, res) => {
+  try {
+    // 1. Fetch all active products from your MySQL database
+    const [products] = await pool.query('SELECT * FROM products WHERE status = "active"');
+    
+    if (products.length === 0) {
+      return res.json({ success: true, message: "No active products found to sync." });
+    }
+
+    console.log(`[Sync] Starting vector sync for ${products.length} products...`);
+
+    // 2. Loop through and push each one to Pinecone via OpenAI
+    let successCount = 0;
+    for (const product of products) {
+      try {
+        await syncProductToVectorDB(product);
+        successCount++;
+      } catch (err) {
+        console.error(`Failed to sync product ID ${product.id}`);
+      }
+    }
+
+    res.json({ 
+      success: true, 
+      message: `Successfully synced ${successCount}/${products.length} products to Pinecone!` 
+    });
+  } catch (error) {
+    console.error("Bulk sync error:", error);
+    res.status(500).json({ success: false, message: "Bulk sync failed" });
+  }
+});
 module.exports = router;
