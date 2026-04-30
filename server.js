@@ -5,6 +5,7 @@ const pool = require("./config/db");
 const path = require("path");
 const bcrypt = require("bcrypt");
 
+// ROUTE IMPORTS
 const categoryRoutes = require("./routes/categoryRoutes");
 const searchRoutes = require("./routes/searchRoutes");
 const flashSalesRoutes = require("./routes/flashSalesRoutes");
@@ -31,12 +32,15 @@ const inventoryRoutes = require("./routes/inventoryRoutes");
 const bannerRoutes = require("./routes/bannerRoutes"); 
 const fitmentRoutes = require("./routes/fitmentRoutes");
 
+// MODEL INITIALIZATION IMPORTS
 const { createBannerTable } = require("./models/bannerModel");
 const { createCartTable } = require("./models/cartModel");
 const { createOrdersTables } = require("./models/orderModel");
 const { createAddressTable } = require("./models/addressModel");
 const { initProductsTable } = require("./models/productModel");
 const { initCategoriesTable } = require("./models/categoryModel");
+const { initReturnsTable } = require("./models/returnModel"); // SPRINT 2
+const { initContactTable } = require("./models/contactModel"); // SPRINT 2
 
 const app = express();
 
@@ -69,10 +73,10 @@ const corsOptions = {
   optionsSuccessStatus: 204
 };
 
-// Apply CORS middleware globally
+// Global Middleware
 app.use(cors(corsOptions));
 
-// Express 5+ Bulletproof Preflight Interceptor (Bypasses path-to-regexp entirely)
+// Express 5+ Preflight Interceptor
 app.use((req, res, next) => {
   if (req.method === "OPTIONS") {
     return res.status(204).end();
@@ -80,13 +84,12 @@ app.use((req, res, next) => {
   next();
 });
 
-// Proxy Trust and Body Parsers
 app.set("trust proxy", 1);
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// ROUTES
+// MOUNT ROUTES
 app.use("/api/flash-sales", flashSalesRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/fitments", fitmentRoutes);
@@ -124,7 +127,10 @@ async function initDB() {
     await createCartTable();
     await createOrdersTables();
     await createBannerTable();
+    await initReturnsTable();  // SPRINT 2 INITIALIZATION
+    await initContactTable();  // SPRINT 2 INITIALIZATION
     
+    // Check for Master Admin
     try {
       const [adminRows] = await pool.query("SELECT * FROM admin_users WHERE email = 'admin@anritvox.com'");
       if (adminRows.length === 0) {
@@ -133,8 +139,9 @@ async function initDB() {
         console.log("[DB] Master Admin Generated.");
       }
     } catch (adminErr) {
-      console.log("[DB] Note: Admin table check bypassed temporarily.");
+      console.log("[DB] Note: Admin table check bypassed or table already exists.");
     }
+    
     console.log("[DB] All tables verified/created successfully.");
   } catch (err) {
     console.error("[DB] Initialization error:", err.message);
