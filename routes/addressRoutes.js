@@ -1,65 +1,113 @@
-// backend/routes/addressRoutes.js
 const express = require('express');
 const router = express.Router();
+const { AddressModel } = require('../models/addressModel');
 const { authenticateUser } = require('../middleware/authMiddleware');
-const { getAddressesByUser, createAddress, updateAddress, deleteAddress } = require('../models/addressModel');
+const pool = require('../config/db');
 
-// GET /api/addresses
+/**
+ * @route   GET /api/addresses
+ * @desc    Get all saved addresses for the authenticated user
+ * @access  Private
+ */
 router.get('/', authenticateUser, async (req, res) => {
   try {
-    const list = await getAddressesByUser(req.user.id);
-    return res.json(list);
-  } catch (err) {
-    console.error("[Address GET Error]:", err);
-    return res.status(500).json({ message: 'Failed to load addresses' });
+    const addresses = await AddressModel.getUserAddresses(req.user.id);
+    // Returning both formats to ensure frontend compatibility
+    res.json({ 
+      success: true, 
+      data: addresses,
+      addresses: addresses 
+    });
+  } catch (error) {
+    console.error("[Address API GET Error]:", error.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch addresses' });
   }
 });
 
-// POST /api/addresses
+/**
+ * @route   POST /api/addresses
+ * @desc    Create a new address for the authenticated user
+ * @access  Private
+ */
 router.post('/', authenticateUser, async (req, res) => {
   try {
-    const { full_name, phone, line1, line2, city, state, pincode, is_default } = req.body;
+    const { full_name, phone, line1, pincode, city, state } = req.body;
     
-    if (!full_name || !phone || !line1 || !city || !state || !pincode) {
-      return res.status(400).json({ message: 'Required fields missing' });
+    // Validate required fields matching Checkout.jsx form
+    if (!full_name || !phone || !line1 || !pincode || !city || !state) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'All required address fields must be filled.' 
+      });
     }
 
-    await createAddress(req.user.id, { full_name, phone, line1, line2, city, state, pincode, is_default });
-    const list = await getAddressesByUser(req.user.id);
-    return res.status(201).json(list);
-  } catch (err) {
-    console.error("[Address POST Error]:", err);
-    return res.status(500).json({ message: 'Failed to create address' });
+    await AddressModel.createAddress(req.user.id, req.body);
+    
+    // Fetch updated list to return to frontend as expected by Checkout.jsx
+    const updatedAddresses = await AddressModel.getUserAddresses(req.user.id);
+    
+    res.status(201).json({ 
+      success: true, 
+      message: 'Address saved successfully', 
+      data: updatedAddresses,
+      addresses: updatedAddresses
+    });
+  } catch (error) {
+    console.error("[Address API POST Error]:", error.message);
+    res.status(500).json({ success: false, message: 'Failed to save address' });
   }
 });
 
-// PUT /api/addresses/:id
-router.put('/:id', authenticateUser, async (req, res) => {
+/**
+ * @route   PATCH /api/addresses/:id/default
+ * @desc    Set a specific address as the default
+ * @access  Private
+ */
+router.patch('/:id/default', authenticateUser, async (req, res) => {
   try {
-    // FIX: Add strictly required validation logic to prevent database crash triggers
-    const { full_name, phone, line1, city, state, pincode } = req.body;
-    if (!full_name || !phone || !line1 || !city || !state || !pincode) {
-      return res.status(400).json({ message: 'Required fields missing' });
+    const addressId = req.params.id;
+    const userId = req.user.id;
+
+    // Transactional update to ensure only one default exists
+    await pool.query('UPDATE addresses SET is_default = FALSE WHERE user_id = ?', [userId]);
+    const [result] = await pool.query(
+      'UPDATE addresses SET is_default = TRUE WHERE id = ? AND user_id = ?', 
+      [addressId, userId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Address not found' });
     }
 
-    await updateAddress(req.params.id, req.user.id, req.body);
-    const list = await getAddressesByUser(req.user.id);
-    return res.json(list);
-  } catch (err) {
-    console.error("[Address PUT Error]:", err);
-    return res.status(500).json({ message: 'Failed to update address' });
+    const updatedAddresses = await AddressModel.getUserAddresses(userId);
+    res.json({ success: true, message: 'Default address updated', data: updatedAddresses });
+  } catch (error) {
+    console.error("[Address API PATCH Error]:", error.message);
+    res.status(500).json({ success: false, message: 'Failed to update default address' });
   }
 });
 
-// DELETE /api/addresses/:id
+/**
+ * @route   DELETE /api/addresses/:id
+ * @desc    Remove an address
+ * @access  Private
+ */
 router.delete('/:id', authenticateUser, async (req, res) => {
   try {
-    await deleteAddress(req.params.id, req.user.id);
-    const list = await getAddressesByUser(req.user.id);
-    return res.json(list);
-  } catch (err) {
-    console.error("[Address DELETE Error]:", err);
-    return res.status(500).json({ message: 'Failed to delete address' });
+    const [result] = await pool.query(
+      'DELETE FROM addresses WHERE id = ? AND user_id = ?', 
+      [req.params.id, req.user.id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Address not found' });
+    }
+
+    const updatedAddresses = await AddressModel.getUserAddresses(req.user.id);
+    res.json({ success: true, message: 'Address deleted', data: updatedAddresses });
+  } catch (error) {
+    console.error("[Address API DELETE Error]:", error.message);
+    res.status(500).json({ success: false, message: 'Failed to delete address' });
   }
 });
 
