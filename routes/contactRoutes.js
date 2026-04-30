@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const { initContactTable, ContactModel } = require('../models/contactModel');
-const { authenticateToken, authenticateAdmin } = require('../middleware/authMiddleware');
+const { authenticateUser, authenticateAdmin } = require('../middleware/authMiddleware');
 
 // Optional middleware to get user if they are logged in, but allow guests
 const optionalAuth = (req, res, next) => {
-  authenticateToken(req, res, (err) => {
+  authenticateUser(req, res, (err) => {
     // We ignore the error here because guests are allowed to submit tickets
     next(); 
   });
@@ -43,7 +43,7 @@ router.post('/', optionalAuth, async (req, res) => {
 });
 
 // 2. GET MY TICKETS (User Dashboard)
-router.get('/my', authenticateToken, async (req, res) => {
+router.get('/my', authenticateUser, async (req, res) => {
   try {
     const tickets = await ContactModel.getTicketsByUser(req.user.id);
     res.json({ success: true, data: tickets });
