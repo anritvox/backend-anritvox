@@ -5,7 +5,7 @@ const pool = require("./config/db");
 const path = require("path");
 const bcrypt = require("bcrypt");
 
-// ROUTE IMPORTS
+// ROUTE IMPOR
 
 const categoryRoutes = require("./routes/categoryRoutes");
 const searchRoutes = require("./routes/searchRoutes");
