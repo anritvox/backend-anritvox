@@ -42,4 +42,4 @@ const ReturnModel = {
   }
 };
 
-module.exports = { initReturnsTable };
+module.exports = ReturnModel;
