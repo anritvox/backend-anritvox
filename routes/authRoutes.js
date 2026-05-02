@@ -1,7 +1,10 @@
 const express = require("express");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcrypt");
+const OTP = require('../models/otpModel');
+const Admin = require('../models/adminModel');
 const pool = require('../config/db');
+const { sendOTP } = require('../services/smsService');
 const { sendMail } = require('../utils/mail');
 const { registerLimiter, loginLimiter, otpLimiter } = require('../middleware/rateLimiter');
 const { authenticateAdmin } = require('../middleware/authMiddleware');
@@ -18,6 +21,59 @@ const DISPOSABLE_DOMAINS = [
   'mailinator.com', 'tempmail.com', 'guerrillamail.com', '10minutemail.com', 'throwaway.email', 'getnada.com', 'trashmail.com', 'maildrop.cc', 'sharklasers.com'
 ];
 
+router.post('/admin/otp/send', async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ message: 'Phone number is required' });
+
+    const admin = await Admin.findOne({ phone });
+    if (!admin) return res.status(404).json({ message: 'No admin account found with this number' });
+
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+    await OTP.findOneAndUpdate(
+      { phone },
+      { otp: otpCode, createdAt: Date.now() },
+      { upsert: true, new: true }
+    );
+
+    await sendOTP(phone, otpCode);
+
+    res.status(200).json({ message: 'OTP dispatched' });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to process OTP request' });
+  }
+});
+
+router.post('/admin/otp/verify', async (req, res) => {
+  try {
+    const { phone, otp } = req.body;
+    if (!phone || !otp) return res.status(400).json({ message: 'Phone and OTP are required' });
+
+    const validOtp = await OTP.findOne({ phone, otp });
+    if (!validOtp) return res.status(400).json({ message: 'Invalid or expired OTP' });
+
+    const admin = await Admin.findOne({ phone });
+    if (!admin) return res.status(404).json({ message: 'Admin not found' });
+
+    await OTP.deleteOne({ _id: validOtp._id });
+
+    const token = jwt.sign(
+      { id: admin._id, role: 'admin' }, 
+      process.env.JWT_SECRET, 
+      { expiresIn: '24h' }
+    );
+
+    res.status(200).json({
+      message: 'Login successful',
+      token,
+      user: { id: admin._id, name: admin.name, email: admin.email, role: 'admin' }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Verification failed' });
+  }
+});
+
 router.post("/admin/login", loginLimiter, async (req, res) => {
   try {
     const { email, password, turnstileToken } = req.body;
@@ -32,7 +88,6 @@ router.post("/admin/login", loginLimiter, async (req, res) => {
     const token = jwt.sign({ id: admin.id, email: admin.email, role: "admin" }, process.env.JWT_SECRET, { expiresIn: "7d" });
     return res.json({ token, admin: { id: admin.id, email: admin.email, role: "admin" } });
   } catch (err) {
-    console.error("Admin Login Error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -48,7 +103,6 @@ router.post("/login", loginLimiter, async (req, res) => {
     const validCustomer = await verifyCustomerPassword(password, customer.password_hash);
     if (!validCustomer) return res.status(401).json({ message: "Invalid credentials" });
 
-    // MFA Intercept Logic
     if (customer.two_factor_enabled) {
       return res.status(202).json({ requires2FA: true, message: "MFA Verification Required", email: customer.email });
     }
@@ -56,7 +110,6 @@ router.post("/login", loginLimiter, async (req, res) => {
     const token = jwt.sign({ id: customer.id, email: customer.email, role: customer.role }, process.env.JWT_SECRET, { expiresIn: "7d" });
     return res.json({ token, user: { id: customer.id, name: customer.name, email: customer.email, role: customer.role } });
   } catch (err) {
-    console.error("User Login Error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -76,7 +129,6 @@ router.post("/2fa/verify", otpLimiter, async (req, res) => {
     const token = jwt.sign({ id: customer.id, email: customer.email, role: customer.role }, process.env.JWT_SECRET, { expiresIn: "7d" });
     return res.json({ token, user: { id: customer.id, name: customer.name, email: customer.email, role: customer.role } });
   } catch (err) {
-    console.error("2FA Error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -89,17 +141,14 @@ router.post("/forgot-password", otpLimiter, async (req, res) => {
     if (!user) return res.status(404).json({ message: "Designation not found in registry." });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const otpExpiry = Date.now() + 10 * 60 * 1000; // 10 minutes
+    const otpExpiry = Date.now() + 10 * 60 * 1000;
 
-    // 1. Try to save to DB
     try {
       await saveResetOtp(user.id, otp, otpExpiry);
     } catch (dbErr) {
-      console.error("DATABASE ERROR saving OTP:", dbErr);
       return res.status(500).json({ message: "Database failure. Did you run the ALTER TABLE command?" });
     }
 
-    // 2. Try to send Email
     try {
       await sendMail({
         to: email, 
@@ -112,13 +161,11 @@ router.post("/forgot-password", otpLimiter, async (req, res) => {
               </div>`
       });
     } catch (mailErr) {
-      console.error("MAILJET ERROR:", mailErr);
       return res.status(500).json({ message: "Email dispatch failed. Verify Mailjet API keys in .env." });
     }
 
     res.json({ message: "Recovery token dispatched." });
   } catch (err) {
-    console.error("Forgot Password Fatal Error:", err);
     res.status(500).json({ message: "Fatal Server Error." });
   }
 });
@@ -134,7 +181,6 @@ router.post("/verify-otp", otpLimiter, async (req, res) => {
 
     res.json({ success: true, message: "Token verified. Awaiting new key." });
   } catch (err) {
-    console.error("Verify OTP Error:", err);
     res.status(500).json({ message: "Server Error" });
   }
 });
@@ -157,7 +203,6 @@ router.post("/reset-password", otpLimiter, async (req, res) => {
 
     res.json({ message: "Master key updated successfully." });
   } catch (err) {
-    console.error("Reset Password Error:", err);
     res.status(500).json({ message: "Server Error" });
   }
 });
@@ -175,7 +220,6 @@ router.post("/security-question/verify", otpLimiter, async (req, res) => {
 
     res.json({ success: true, securityBypass: true });
   } catch (err) {
-    console.error("Security Question Error:", err);
     res.status(500).json({ message: "Server Error" });
   }
 });
@@ -207,13 +251,11 @@ router.post("/register", registerLimiter, async (req, res) => {
         to: email, subject: 'Verify your Anritvox account', html: `<h3>Welcome to Anritvox!</h3><p>Your verification code is: <strong>${otp}</strong></p>`
       });
     } catch (mailErr) {
-       console.error("Register Mailjet Error:", mailErr);
        return res.status(500).json({ message: "Failed to dispatch email. Check Mailjet keys." });
     }
 
     res.json({ success: true, message: "OTP sent to email." });
   } catch (err) { 
-    console.error("Register Error:", err);
     res.status(500).json({ message: "Server error" }); 
   }
 });
@@ -238,7 +280,6 @@ router.post("/verify-email", otpLimiter, async (req, res) => {
 
     res.status(201).json({ success: true, token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
   } catch (err) { 
-    console.error("Verify Email Error:", err);
     res.status(500).json({ message: "Server error" }); 
   }
 });
