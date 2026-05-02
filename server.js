@@ -8,6 +8,7 @@ const bcrypt = require("bcrypt");
 // ROUTE IMPOR
 
 const categoryRoutes = require("./routes/categoryRoutes");
+const walletRoutes = require("./routes/walletRoutes");
 const searchRoutes = require("./routes/searchRoutes");
 const flashSalesRoutes = require("./routes/flashSalesRoutes");
 const subcategoryRoutes = require("./routes/subcategoryRoutes");
@@ -93,6 +94,7 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // MOUNT ROUTES
 app.use("/api/flash-sales", flashSalesRoutes);
+app.use("/api/wallet", walletRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/fitments", fitmentRoutes);
 app.use("/api/categories", categoryRoutes);
