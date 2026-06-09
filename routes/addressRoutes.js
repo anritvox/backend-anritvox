@@ -20,7 +20,7 @@ router.get('/', authenticateUser, async (req, res) => {
 
 router.post('/', authenticateUser, async (req, res) => {
   try {
-    // Structural normalization layer parsing both raw and mapped payloads safely
+  
     const full_name = req.body.full_name || (req.body.firstName && req.body.lastName ? `${req.body.firstName} ${req.body.lastName}`.trim() : null);
     const phone = req.body.phone || req.body.phone_number;
     const line1 = req.body.line1 || req.body.address || req.body.street_address;
