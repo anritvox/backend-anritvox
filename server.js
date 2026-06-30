@@ -5,6 +5,7 @@ const pool = require("./config/db");
 const path = require("path");
 const bcrypt = require("bcrypt");
 
+// Route Imports
 const categoryRoutes = require("./routes/categoryRoutes");
 const affiliateRoutes = require("./routes/affiliateRoutes");
 const taxRoutes = require("./routes/taxRoutes");
@@ -35,6 +36,7 @@ const bannerRoutes = require("./routes/bannerRoutes");
 const fitmentRoutes = require("./routes/fitmentRoutes");
 const warehouseRoutes = require("./routes/warehouseRoutes");
 
+// Model Table Init Imports
 const { initWarehouseTables } = require("./models/warehouseModel");
 const { initWalletTables } = require("./models/walletModel");
 const { createBannerTable } = require("./models/bannerModel");
@@ -49,21 +51,26 @@ const { initAdminTable } = require("./models/adminModel");
 
 const app = express();
 
+// Secure Allowed Origins Array
 const allowedOrigins = [
   "https://www.anritvox.com",
   "https://anritvox.com",
   "http://localhost:5173",
-  "http://localhost:3000"
+  "http://localhost:3000",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:3000"
 ];
 
 const corsOptions = {
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
     
+    // Explicit list validation, dynamic deployment checks, and local environment bypass flags
     const isExplicitlyAllowed = allowedOrigins.includes(origin);
+    const isVercelSubdomain = origin.endsWith(".vercel.app");
     const isDevelopmentContext = process.env.NODE_ENV === "development";
 
-    if (isExplicitlyAllowed || isDevelopmentContext) {
+    if (isExplicitlyAllowed || isVercelSubdomain || isDevelopmentContext) {
       callback(null, true);
     } else {
       callback(new Error("Not allowed by CORS"));
@@ -76,7 +83,7 @@ const corsOptions = {
   optionsSuccessStatus: 204
 };
 
-
+// Global Middleware Chain Configuration
 app.use(cors(corsOptions));
 app.use((req, res, next) => {
   if (req.method === "OPTIONS") return res.status(204).end();
@@ -88,6 +95,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
+// Core API Routing Connections
 app.use("/api/flash-sales", flashSalesRoutes);
 app.use("/api/affiliate", affiliateRoutes);
 app.use("/api/tax", taxRoutes);
@@ -118,10 +126,12 @@ app.use("/api/inventory", inventoryRoutes);
 app.use("/api/banners", bannerRoutes);
 app.use("/api/warehouse", warehouseRoutes);
 
+// Static Layout Fallbacks
 app.get("/warehouse", (req, res) => res.sendFile(path.join(__dirname, "public/warehouse.html")));
 app.get("/warehouseadmin", (req, res) => res.sendFile(path.join(__dirname, "public/warehouseadmin.html")));
 app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running!" }));
 
+// Database Initialization Lifecycle
 async function initDB() {
   try {
     const safeInit = async (name, initFunction) => {
@@ -178,10 +188,12 @@ async function initDB() {
   }
 }
 
+// 404 Fallback
 app.use("/api", (req, res) => {
   res.status(404).json({ success: false, message: `API Endpoint Not Found: ${req.originalUrl}` });
 });
 
+// Global Error Handler Middleware
 app.use((err, req, res, next) => {
   if (err.message === "Not allowed by CORS") {
     return res.status(403).json({ success: false, message: "CORS Origin Rejected" });
