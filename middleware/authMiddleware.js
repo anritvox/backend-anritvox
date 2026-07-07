@@ -163,6 +163,11 @@ const isWarehouseAdmin = async (req, res, next) => {
         message: 'Access Denied: Authentication session state missing.' 
       });
     }
+    // Admin/Superadmin ko direct access do
+if (req.user.role === 'admin' || req.user.role === 'superadmin') {
+  return next();
+}
+
 
     // Refetch latest role and database active flags to prevent stale runtime cache state bypasses
     const [userRows] = await pool.query('SELECT role, is_active FROM users WHERE id = ?', [req.user.id]);
