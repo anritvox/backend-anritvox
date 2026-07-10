@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Anritvox Warehouse Terminal</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Rajdhani:wght@600;700&family=Roboto+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/@phosphor-icons/web"></script>
@@ -13,16 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 <style>
 :root{--bg-body:#f1f5f9;--bg-card:#ffffff;--bg-sidebar:#0f172a;--text-sidebar:#f8fafc;--olive-pri:#059669;--olive-dark:#064e3b;--olive-light:#ecfdf5;--text-main:#0f172a;--text-mute:#475569;--border:1px solid #cbd5e1;--font-ui:'Inter', sans-serif;--font-head:'Rajdhani', sans-serif;--font-mono:'Roboto Mono', monospace;--rad:12px;--shadow:0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.02);}*{margin:0;padding:0;box-sizing:border-box;outline:none;-webkit-tap-highlight-color:transparent;}
-body{
-    background:var(--bg-body);
-    color:var(--text-main);
-    font-family:var(--font-ui);
-    min-height:100vh;
-    overflow-x:hidden;
-    overflow-y:auto;
-    display:flex;
-    font-size:14px;
-}
+body{background:var(--bg-body);color:var(--text-main);font-family:var(--font-ui);height:100vh;overflow:hidden;display:flex;font-size:14px;-webkit-user-select: none; -moz-user-select: none; -ms-user-select: none; user-select: none;}
 input, select, textarea {-webkit-user-select: auto !important; -moz-user-select: auto !important; -ms-user-select: auto !important; user-select: auto !important;}
 .hidden{display:none !important;}.flex{display:flex;gap:12px;align-items:center;}.flex-col{display:flex;flex-direction:column;gap:12px;}.between{justify-content:space-between;}.grid-2{display:grid;grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));gap:15px;}.grid-4{display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:15px;}.full-w{width:100%;}.text-sm{font-size:12px;color:var(--text-mute);}.bold{font-weight:600;}.mt-2{margin-top:16px;}.mb-2{margin-bottom:16px;}.scroll-y{overflow-y:auto;max-height:100%;}
 .card{background:var(--bg-card);border:var(--border);border-radius:var(--rad);padding:25px;box-shadow:var(--shadow); transition: transform 0.2s ease;}
@@ -91,37 +82,6 @@ tr:hover td{background:#f8fafc;}
 @keyframes spin{to{transform:rotate(360deg);}}
 @keyframes pulse{0%{opacity:0.5;}50%{opacity:1;}100%{opacity:0.5;}}
 @media (max-width: 1024px){.sidebar{width:80px;}.brand span, .nav-item span, .nav-head{display:none;}.brand{padding:0 20px; justify-content:center;}.split-view{grid-template-columns:1fr;grid-template-rows:auto 1fr;}.split-sidebar{border-right:none;border-bottom:1px solid #e2e8f0;padding-bottom:20px;margin-bottom:20px;}}
-
-    @media (max-width:768px){
-
-    body{
-        font-size:13px;
-    }
-
-    .grid-2,
-    .grid-4{
-        grid-template-columns:1fr !important;
-    }
-
-    table{
-        display:block;
-        overflow-x:auto;
-        white-space:nowrap;
-    }
-
-    img{
-        max-width:100%;
-        height:auto;
-    }
-
-    input,
-    button,
-    select,
-    textarea{
-        width:100%;
-    }
-
-}
 </style>
 </head>
 <body>
