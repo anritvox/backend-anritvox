@@ -37,6 +37,7 @@ const fitmentRoutes = require("./routes/fitmentRoutes");
 const warehouseRoutes = require("./routes/warehouseRoutes");
 
 // Model Table Init Imports
+const { initUsersTable } = require("./models/userModel");
 const { initWarehouseTables } = require("./models/warehouseModel");
 const { initWalletTables } = require("./models/walletModel");
 const { createBannerTable } = require("./models/bannerModel");
@@ -65,7 +66,6 @@ const corsOptions = {
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
     
-    // Explicit list validation, dynamic deployment checks, and local environment bypass flags
     const isExplicitlyAllowed = allowedOrigins.includes(origin);
     const isVercelSubdomain = origin.endsWith(".vercel.app");
     const isDevelopmentContext = process.env.NODE_ENV === "development";
@@ -131,20 +131,36 @@ app.get("/warehouse", (req, res) => res.sendFile(path.join(__dirname, "public/wa
 app.get("/warehouseadmin", (req, res) => res.sendFile(path.join(__dirname, "public/warehouseadmin.html")));
 app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running!" }));
 
-// Database Initialization Lifecycle
+/**
+ * Sequential Database Initializer
+ * Ensures parent tables exist before dependent child foreign keys are applied.
+ */
 async function initDB() {
   try {
+    console.log('[DB Init] Testing database connection...');
+    await pool.query('SELECT 1');
+    console.log('[DB Init] Connection test successful.');
+
     const safeInit = async (name, initFunction) => {
       if (typeof initFunction === 'function') {
         try {
           await initFunction();
+          console.log(`[DB Init] Initialized ${name} successfully.`);
         } catch (e) {
-          console.error(`[DB Init Error] Failed to initialize ${name}:`, e);
+          console.error(`[DB Init Error] Failed to initialize ${name}:`, e.message);
         }
       }
     };
 
+    // Step 1: Initialize Parent Tables
+    console.log('[DB Init] Initializing parent tables...');
+    await safeInit('Users', initUsersTable);
     await safeInit('Categories', initCategoriesTable);
+    await safeInit('Admin', initAdminTable);
+    await safeInit('Warehouse', initWarehouseTables);
+
+    // Step 2: Initialize Dependent Child Tables
+    console.log('[DB Init] Initializing child tables...');
     await safeInit('Products', initProductsTable);
     await safeInit('Address', createAddressTable);
     await safeInit('Wallet', initWalletTables);
@@ -181,10 +197,12 @@ async function initDB() {
         await pool.query("INSERT INTO admin_users (email, password_hash, role) VALUES ('adminwarehouse2026', ?, 'warehouse_admin')", [wHash]);
       }
     } catch (e) {
-      console.error("[DB Query Init Error]:", e);
+      console.error("[DB Query Init Error]:", e.message);
     }
+
+    console.log('[DB Init] All database schema migrations completed successfully.');
   } catch (err) {
-    console.error("[Fatal DB Lifecycle Error]:", err);
+    console.error("[Fatal DB Lifecycle Error]:", err.message);
   }
 }
 
@@ -206,9 +224,6 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-
-initWarehouseTables().catch(e => {});
-initAdminTable().catch(e => {});
 
 app.listen(PORT, async () => {
   console.log(`[Server Ready]: Active on port ${PORT}`);
