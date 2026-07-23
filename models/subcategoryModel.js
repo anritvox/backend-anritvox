@@ -9,9 +9,11 @@ const initSubcategoriesTable = async () => {
       name VARCHAR(100) NOT NULL,
       description TEXT,
       category_id INT NOT NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
+
   // MySQL 5.7 compatible: check information_schema before ALTER
   const [cols] = await pool.query(
     `SELECT COLUMN_NAME FROM information_schema.COLUMNS
@@ -25,7 +27,6 @@ const initSubcategoriesTable = async () => {
     );
   }
 };
-initSubcategoriesTable().catch(console.error);
 
 // All subcategories with parent category name
 const getAllSubcategories = async () => {
@@ -89,6 +90,7 @@ const deleteSubcategory = async (id) => {
 };
 
 module.exports = {
+  initSubcategoriesTable,
   getAllSubcategories,
   getSubcategoriesByCategory,
   getSubcategoryById,
