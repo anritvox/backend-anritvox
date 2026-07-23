@@ -9,7 +9,7 @@ const MJ_PRIVATE =
   process.env.MAILJET_API_SECRET ||
   process.env.MJ_APIKEY_PRIVATE ||
   process.env.MAILJET_PRIVATE;
-const EMAIL_FROM = process.env.EMAIL_FROM || "no-reply@yourdomain.com";
+const EMAIL_FROM = process.env.EMAIL_FROM || "no-reply@anritvox.com";
 const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || "ANRITVOX Logistics";
 
 if (!MJ_PUBLIC || !MJ_PRIVATE) {
@@ -35,7 +35,10 @@ try {
     }
   }
 } catch (e) {
-  console.warn("⚠️ Mailjet SDK not found or initialization failed; falling back to direct HTTPS calls. Details:", e.message);
+  console.warn(
+    "⚠️ Mailjet SDK not found or initialization failed; falling back to direct HTTPS calls. Details:",
+    e.message
+  );
 }
 
 function normalizeRecipient(recipient) {
@@ -122,7 +125,7 @@ async function sendMail({
     if (typeof from === "string") {
       const m = from.match(/^(.*)<(.+@.+)>$/);
       if (m) return { Email: m[2].trim(), Name: m[1].trim() };
-      return { Email: from };
+      return { Email: from, Name: EMAIL_FROM_NAME };
     }
     return { Email: from.Email, Name: from.Name || EMAIL_FROM_NAME };
   })();
@@ -145,7 +148,10 @@ async function sendMail({
       const res = await mailjetClient.post("send", { version: "v3.1" }).request(body);
       return res.body;
     } catch (err) {
-      console.error("Mailjet SDK Error:", util.inspect(err.response?.body || err.message, { depth: 2 }));
+      console.error(
+        "Mailjet SDK Error:",
+        util.inspect(err.response?.body || err.message, { depth: 2 })
+      );
       throw err;
     }
   }
@@ -153,21 +159,52 @@ async function sendMail({
   return httpSendMail(body);
 }
 
-const sendOrderStatusEmail = async (email, name, orderId, status, trackingNumber = null, courier = null) => {
-  const formattedId = String(orderId).padStart(10, '0');
-  
+const sendOrderStatusEmail = async (
+  email,
+  name,
+  orderId,
+  status,
+  trackingNumber = null,
+  courier = null
+) => {
+  const formattedId = String(orderId).padStart(10, "0");
+
   const statusConfig = {
-    pending: { color: '#f59e0b', text: 'Pending Confirmation', msg: 'We have received your order and are currently reviewing it. We will notify you once it has been processed.' },
-    processing: { color: '#3b82f6', text: 'Processing Order', msg: 'Your order has been confirmed and our warehouse team is currently prepping it for dispatch.' },
-    shipped: { color: '#6366f1', text: 'Shipped / In Transit', msg: 'Great news! Your order has been dispatched and is currently on its way to your destination.' },
-    delivered: { color: '#10b981', text: 'Delivered', msg: 'Your package has been successfully delivered. We hope you enjoy your purchase!' },
-    cancelled: { color: '#ef4444', text: 'Order Cancelled', msg: 'Your order has been cancelled. Any applicable refunds will be processed shortly to your original payment method.' },
-    returned: { color: '#64748b', text: 'Return Processed', msg: 'We have received and processed your return request.' }
+    pending: {
+      color: "#f59e0b",
+      text: "Pending Confirmation",
+      msg: "We have received your order and are currently reviewing it. We will notify you once it has been processed.",
+    },
+    processing: {
+      color: "#3b82f6",
+      text: "Processing Order",
+      msg: "Your order has been confirmed and our warehouse team is currently prepping it for dispatch.",
+    },
+    shipped: {
+      color: "#6366f1",
+      text: "Shipped / In Transit",
+      msg: "Great news! Your order has been dispatched and is currently on its way to your destination.",
+    },
+    delivered: {
+      color: "#10b981",
+      text: "Delivered",
+      msg: "Your package has been successfully delivered. We hope you enjoy your purchase!",
+    },
+    cancelled: {
+      color: "#ef4444",
+      text: "Order Cancelled",
+      msg: "Your order has been cancelled. Any applicable refunds will be processed shortly to your original payment method.",
+    },
+    returned: {
+      color: "#64748b",
+      text: "Return Processed",
+      msg: "We have received and processed your return request.",
+    },
   };
 
   const config = statusConfig[status.toLowerCase()] || statusConfig.pending;
-  
-  let trackingHtml = '';
+
+  let trackingHtml = "";
   if (trackingNumber && courier) {
     trackingHtml = `
       <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 20px; margin-top: 20px;">
@@ -205,7 +242,7 @@ const sendOrderStatusEmail = async (email, name, orderId, status, trackingNumber
     return await sendMail({
       to: email,
       subject: `Order Update: #${formattedId} is ${config.text}`,
-      html: htmlTemplate
+      html: htmlTemplate,
     });
   } catch (error) {
     console.error("Failed to send high-end status email:", error);
