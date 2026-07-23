@@ -46,7 +46,7 @@ const initProductsTable = async () => {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
       FOREIGN KEY (subcategory_id) REFERENCES subcategories(id) ON DELETE SET NULL
-    )
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
 
   await pool.query(`
@@ -57,7 +57,7 @@ const initProductsTable = async () => {
       media_type ENUM('image','video','3d') DEFAULT 'image',
       sort_order INT DEFAULT 0,
       FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE
-    )
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
   `);
 
   // Migrations for existing tables
@@ -84,7 +84,6 @@ const attachImages = async (rows) => {
       url: r.file_path.startsWith('http') ? r.file_path : `${CLOUDFRONT_BASE_URL}/${r.file_path}`,
       type: r.media_type || 'image'
     }));
-    // Also set a primary image_url for easy access
     product.image_url = product.images.length > 0 ? product.images[0].url : null;
   }
   return rows;
@@ -206,8 +205,6 @@ const updateProductStock = async (id, quantityChange, operation = 'set') => {
   const [[updatedProduct]] = await pool.query('SELECT quantity FROM products WHERE id = ?', [id]);
   return updatedProduct.quantity;
 };
-
-initProductsTable().catch(err => console.error('[DB] productModel migration error:', err));
 
 module.exports = {
   initProductsTable,
