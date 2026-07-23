@@ -38,17 +38,18 @@ const warehouseRoutes = require("./routes/warehouseRoutes");
 
 // Model Table Init Imports
 const { initUsersTable } = require("./models/userModel");
-const { initWarehouseTables } = require("./models/warehouseModel");
+const { initAdminTable } = require("./models/adminModel");
+const { initCategoriesTable } = require("./models/categoryModel");
+const { initSubcategoriesTable } = require("./models/subcategoryModel");
+const { initProductsTable } = require("./models/productModel");
+const { createAddressTable } = require("./models/addressModel");
 const { initWalletTables } = require("./models/walletModel");
-const { createBannerTable } = require("./models/bannerModel");
 const { createCartTable } = require("./models/cartModel");
 const { createOrdersTables } = require("./models/orderModel");
-const { createAddressTable } = require("./models/addressModel");
-const { initProductsTable } = require("./models/productModel");
-const { initCategoriesTable } = require("./models/categoryModel");
+const { createBannerTable } = require("./models/bannerModel");
 const { initReturnsTable } = require("./models/returnModel");
 const { initContactTable } = require("./models/contactModel");
-const { initAdminTable } = require("./models/adminModel");
+const { initWarehouseTables } = require("./models/warehouseModel");
 
 const app = express();
 
@@ -132,8 +133,22 @@ app.get("/warehouseadmin", (req, res) => res.sendFile(path.join(__dirname, "publ
 app.get("/", (req, res) => res.json({ status: "ok", message: "Anritvox API running!" }));
 
 /**
+ * Safe initializer helper wrapper
+ */
+async function safeInit(name, fn) {
+  try {
+    if (typeof fn === 'function') {
+      await fn();
+      console.log(`[DB Init] Initialized ${name} successfully.`);
+    }
+  } catch (error) {
+    console.error(`[DB Init Error] Failed to initialize ${name}:`, error.message);
+  }
+}
+
+/**
  * Sequential Database Initializer
- * Ensures parent tables exist before dependent child foreign keys are applied.
+ * Strictly respects relational parent -> child table hierarchy to avoid foreign key errors
  */
 async function initDB() {
   try {
@@ -141,32 +156,25 @@ async function initDB() {
     await pool.query('SELECT 1');
     console.log('[DB Init] Connection test successful.');
 
-    const safeInit = async (name, initFunction) => {
-      if (typeof initFunction === 'function') {
-        try {
-          await initFunction();
-          console.log(`[DB Init] Initialized ${name} successfully.`);
-        } catch (e) {
-          console.error(`[DB Init Error] Failed to initialize ${name}:`, e.message);
-        }
-      }
-    };
-
-    // Step 1: Initialize Parent Tables
-    console.log('[DB Init] Initializing parent tables...');
+    // Step 1: Initialize Root Parent Tables (No FK Dependencies)
+    console.log('[DB Init] Initializing root parent tables...');
     await safeInit('Users', initUsersTable);
-    await safeInit('Categories', initCategoriesTable);
     await safeInit('Admin', initAdminTable);
+    await safeInit('Categories', initCategoriesTable);
     await safeInit('Warehouse', initWarehouseTables);
+    await safeInit('Banner', createBannerTable);
 
-    // Step 2: Initialize Dependent Child Tables
+    // Step 2: Initialize Secondary Parent Tables (Depends on Categories)
+    console.log('[DB Init] Initializing secondary parent tables...');
+    await safeInit('Subcategories', initSubcategoriesTable);
+
+    // Step 3: Initialize Dependent Child Tables (Depends on Users, Categories, etc.)
     console.log('[DB Init] Initializing child tables...');
     await safeInit('Products', initProductsTable);
     await safeInit('Address', createAddressTable);
     await safeInit('Wallet', initWalletTables);
     await safeInit('Cart', createCartTable);
     await safeInit('Orders', createOrdersTables);
-    await safeInit('Banner', createBannerTable);
     await safeInit('Returns', initReturnsTable);
     await safeInit('Contact', initContactTable);
 
@@ -225,9 +233,9 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, async () => {
+const server = app.listen(PORT, async () => {
   console.log(`[Server Ready]: Active on port ${PORT}`);
   await initDB();
 });
 
-module.exports = app;
+module.exports = { app, server };
