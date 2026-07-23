@@ -10,7 +10,7 @@ const MJ_PRIVATE =
   process.env.MJ_APIKEY_PRIVATE ||
   process.env.MAILJET_PRIVATE;
 const EMAIL_FROM = process.env.EMAIL_FROM || "no-reply@anritvox.com";
-const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || "ANRITVOX Logistics";
+const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || "ANRITVOX";
 
 if (!MJ_PUBLIC || !MJ_PRIVATE) {
   console.warn(
@@ -27,10 +27,8 @@ try {
     mailjetClient = mj.connect(MJ_PUBLIC, MJ_PRIVATE);
   } else if (typeof mj === "function") {
     try {
-      // v6+ requires the 'new' keyword to instantiate the class
       mailjetClient = new mj({ apiKey: MJ_PUBLIC, apiSecret: MJ_PRIVATE });
     } catch (innerErr) {
-      // Fallback for older versions if 'new' invocation fails
       mailjetClient = mj({ apiKey: MJ_PUBLIC, apiSecret: MJ_PRIVATE });
     }
   }
@@ -159,6 +157,71 @@ async function sendMail({
   return httpSendMail(body);
 }
 
+/**
+ * Sends context-aware OTP emails with strict ANRITVOX branding.
+ * @param {Object} params
+ * @param {string} params.to - Recipient email address
+ * @param {string|number} params.otp - 6-digit OTP code
+ * @param {string} [params.name] - Recipient name
+ * @param {string} [params.context] - Purpose context ('admin_login', 'warehouse_login', 'user_login', 'password_reset')
+ */
+const sendOTPEmail = async ({ to, otp, name = "User", context = "admin_login" }) => {
+  const contextClean = String(context).toLowerCase().replace(/[\s-]/g, "_");
+
+  let portalTitle = "ANRITVOX ADMIN PORTAL";
+  let subjectText = `Your Admin OTP is ${otp}`;
+  let messageText = `You requested an OTP to log into the <strong>ANRITVOX Admin Portal</strong>. Your Admin OTP is <span style="font-size: 24px; font-weight: bold; color: #3b82f6; letter-spacing: 2px;">${otp}</span>.`;
+  let senderName = "ANRITVOX Admin Security";
+
+  if (contextClean.includes("admin")) {
+    portalTitle = "ANRITVOX ADMIN PORTAL";
+    subjectText = `Admin Login Verification Code: ${otp}`;
+    messageText = `You requested an OTP to log into the <strong>ANRITVOX Admin Portal</strong>. Your Admin OTP is <span style="font-size: 24px; font-weight: bold; color: #3b82f6; letter-spacing: 2px;">${otp}</span>.`;
+    senderName = "ANRITVOX Admin Security";
+  } else if (contextClean.includes("warehouse")) {
+    portalTitle = "ANRITVOX WAREHOUSE PORTAL";
+    subjectText = `Warehouse Login Verification Code: ${otp}`;
+    messageText = `You requested an OTP to log into the <strong>ANRITVOX Warehouse Portal</strong>. Your Warehouse OTP is <span style="font-size: 24px; font-weight: bold; color: #3b82f6; letter-spacing: 2px;">${otp}</span>.`;
+    senderName = "ANRITVOX Warehouse";
+  } else if (contextClean.includes("reset") || contextClean.includes("password")) {
+    portalTitle = "ANRITVOX SECURITY";
+    subjectText = `Password Reset Code: ${otp}`;
+    messageText = `You requested a password reset for your <strong>ANRITVOX Account</strong>. Your Password Reset OTP is <span style="font-size: 24px; font-weight: bold; color: #ef4444; letter-spacing: 2px;">${otp}</span>.`;
+    senderName = "ANRITVOX Security";
+  } else {
+    portalTitle = "ANRITVOX STORE";
+    subjectText = `Your ANRITVOX Verification Code: ${otp}`;
+    messageText = `Your ANRITVOX Verification OTP is <span style="font-size: 24px; font-weight: bold; color: #3b82f6; letter-spacing: 2px;">${otp}</span>.`;
+    senderName = "ANRITVOX";
+  }
+
+  const htmlTemplate = `
+    <div style="font-family: 'Inter', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+      <div style="background-color: #0f172a; padding: 30px 20px; text-align: center;">
+        <h1 style="color: #ffffff; margin: 0; font-size: 22px; letter-spacing: 1px; text-transform: uppercase;">${portalTitle}</h1>
+      </div>
+      <div style="padding: 40px 30px; text-align: center;">
+        <p style="color: #334155; font-size: 16px; line-height: 1.6; margin-top: 0;">Hello ${name},</p>
+        <p style="color: #475569; font-size: 16px; line-height: 1.6;">${messageText}</p>
+        <div style="background-color: #f8fafc; border: 2px dashed #cbd5e1; border-radius: 8px; padding: 20px; margin: 25px 0; display: inline-block; width: 80%;">
+          <span style="font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #0f172a;">${otp}</span>
+        </div>
+        <p style="color: #64748b; font-size: 13px; line-height: 1.5;">This code is valid for 10 minutes. If you did not request this OTP, please ignore this email.</p>
+        <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 30px 0;" />
+        <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} ANRITVOX. All rights reserved.</p>
+      </div>
+    </div>
+  `;
+
+  return sendMail({
+    to,
+    from: { Email: EMAIL_FROM, Name: senderName },
+    subject: subjectText,
+    html: htmlTemplate,
+    text: `Your verification code for ${portalTitle} is ${otp}. Valid for 10 minutes.`,
+  });
+};
+
 const sendOrderStatusEmail = async (
   email,
   name,
@@ -233,7 +296,7 @@ const sendOrderStatusEmail = async (
         </p>
       </div>
       <div style="background-color: #f8fafc; padding: 20px; text-align: center; border-top: 1px solid #e2e8f0;">
-        <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} Anritvox. All rights reserved.</p>
+        <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} ANRITVOX. All rights reserved.</p>
       </div>
     </div>
   `;
@@ -241,6 +304,7 @@ const sendOrderStatusEmail = async (
   try {
     return await sendMail({
       to: email,
+      from: { Email: EMAIL_FROM, Name: "ANRITVOX Logistics" },
       subject: `Order Update: #${formattedId} is ${config.text}`,
       html: htmlTemplate,
     });
@@ -268,4 +332,9 @@ async function verifyTransport() {
   });
 }
 
-module.exports = { sendMail, sendOrderStatusEmail, verifyTransport };
+module.exports = {
+  sendMail,
+  sendOTPEmail,
+  sendOrderStatusEmail,
+  verifyTransport,
+};
