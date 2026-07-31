@@ -3,11 +3,6 @@ const express = require("express"),
   bcrypt = require("bcrypt"),
   pool = require("../config/db"),
   { sendMail, sendOTPEmail } = require("../utils/mail"),
-  {
-    registerLimiter,
-    loginLimiter,
-    otpLimiter,
-  } = require("../middleware/rateLimiter"),
   { authenticateAdmin } = require("../middleware/authMiddleware");
 const {
   getAdminByEmail,
@@ -38,7 +33,7 @@ const router = express.Router(),
     "sharklasers.com",
   ];
 
-router.post("/admin/login", loginLimiter, async (req, res) => {
+router.post("/admin/login", async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password)
@@ -60,7 +55,7 @@ router.post("/admin/login", loginLimiter, async (req, res) => {
   }
 });
 
-router.post("/login", loginLimiter, async (req, res) => {
+router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password)
@@ -105,7 +100,7 @@ router.post("/login", loginLimiter, async (req, res) => {
   }
 });
 
-router.post("/2fa/verify", otpLimiter, async (req, res) => {
+router.post("/2fa/verify", async (req, res) => {
   try {
     const { email, otp } = req.body;
     if (!email || !otp)
@@ -128,7 +123,7 @@ router.post("/2fa/verify", otpLimiter, async (req, res) => {
   }
 });
 
-router.post("/forgot-password", otpLimiter, async (req, res) => {
+router.post("/forgot-password", async (req, res) => {
   try {
     const { email } = req.body,
       u = await getUserByEmail(email);
@@ -147,7 +142,7 @@ router.post("/forgot-password", otpLimiter, async (req, res) => {
   }
 });
 
-router.post("/verify-otp", otpLimiter, async (req, res) => {
+router.post("/verify-otp", async (req, res) => {
   try {
     const { email, otp } = req.body,
       u = await getUserByEmail(email);
@@ -160,7 +155,7 @@ router.post("/verify-otp", otpLimiter, async (req, res) => {
   }
 });
 
-router.post("/reset-password", otpLimiter, async (req, res) => {
+router.post("/reset-password", async (req, res) => {
   try {
     const { email, otp, newPassword, securityBypass } = req.body,
       u = await getUserByEmail(email);
@@ -179,7 +174,7 @@ router.post("/reset-password", otpLimiter, async (req, res) => {
   }
 });
 
-router.post("/security-question/verify", otpLimiter, async (req, res) => {
+router.post("/security-question/verify", async (req, res) => {
   try {
     const { email, answer } = req.body,
       u = await getUserByEmail(email);
@@ -194,7 +189,7 @@ router.post("/security-question/verify", otpLimiter, async (req, res) => {
   }
 });
 
-router.post("/register", registerLimiter, async (req, res) => {
+router.post("/register", async (req, res) => {
   try {
     const { name, email, password } = req.body;
     if (!name || !email || !password)
@@ -218,7 +213,7 @@ router.post("/register", registerLimiter, async (req, res) => {
   }
 });
 
-router.post("/verify-email", otpLimiter, async (req, res) => {
+router.post("/verify-email", async (req, res) => {
   try {
     const { email, otp, securityAnswer } = req.body;
     const [r] = await pool.query(
@@ -273,7 +268,7 @@ router.get("/profile", authenticateAdmin, async (req, res) => {
   });
 });
 
-router.post("/admin/request-otp", otpLimiter, async (req, res) => {
+router.post("/admin/request-otp", async (req, res) => {
   try {
     const { email } = req.body;
     const a = await getAdminByEmail(email);
@@ -296,7 +291,7 @@ router.post("/admin/request-otp", otpLimiter, async (req, res) => {
   }
 });
 
-router.post("/admin/verify-otp", otpLimiter, async (req, res) => {
+router.post("/admin/verify-otp", async (req, res) => {
   try {
     const { email, otp } = req.body;
     const a = await getAdminByEmail(email);
@@ -324,7 +319,7 @@ router.post("/admin/verify-otp", otpLimiter, async (req, res) => {
   }
 });
 
-router.post("/warehouse/request-otp", otpLimiter, async (req, res) => {
+router.post("/warehouse/request-otp", async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) return res.status(400).json({ message: "Email required" });
@@ -371,7 +366,7 @@ router.post("/warehouse/request-otp", otpLimiter, async (req, res) => {
   }
 });
 
-router.post("/warehouse/verify-otp", otpLimiter, async (req, res) => {
+router.post("/warehouse/verify-otp", async (req, res) => {
   try {
     const { email, otp } = req.body;
     const [a] = await pool.query(
