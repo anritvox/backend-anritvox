@@ -12,7 +12,7 @@ const {
   updateOrderStatus 
 } = require("../models/orderModel");
 const { getCartTotal, clearCart } = require("../models/cartModel");
-const { getAddressesByUser } = require("../models/addressModel");
+const { AddressModel } = require("../models/addressModel");
 
 router.get("/all", authenticateAdmin, async (req, res) => {
   try {
@@ -68,7 +68,7 @@ router.post("/", authenticateUser, async (req, res) => {
     const { addressId, deliveryType, paymentMode, couponCode, notes } = req.body;
     if (!addressId) return res.status(400).json({ message: "Delivery address is required." });
 
-    const addresses = await getAddressesByUser(req.user.id);
+    const addresses = await AddressModel.getAddressesByUser(req.user.id);
     const address = addresses.find((a) => a.id === parseInt(addressId, 10));
     if (!address) return res.status(404).json({ message: "Address not found." });
 
