@@ -73,7 +73,7 @@ const AddressModel = {
 
 const [result] = await pool.query(
   `INSERT INTO addresses
-  (user_id, full_name, phone_number, line1, city, state, pincode, country, is_default)
+  (user_id, full_name, phone, line1, city, state, pincode, country, is_default)
   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   [
     userId,
