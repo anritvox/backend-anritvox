@@ -71,21 +71,22 @@ const AddressModel = {
         await pool.query('UPDATE addresses SET is_default = FALSE WHERE user_id = ?', [userId]);
       }
 
-      const [result] = await pool.query(
-        `INSERT INTO addresses (user_id, full_name, phone_number, street_address, city, state, postal_code, country, is_default) 
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          userId, 
-          full_name, 
-          db_phone, 
-          db_street, 
-          city, 
-          state, 
-          db_postal, 
-          country || 'India', 
-          is_default ? 1 : 0
-        ]
-      );
+const [result] = await pool.query(
+  `INSERT INTO addresses
+  (user_id, full_name, phone_number, line1, city, state, pincode, country, is_default)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  [
+    userId,
+    full_name,
+    db_phone,
+    db_street,
+    city,
+    state,
+    db_postal,
+    country || "India",
+    is_default ? 1 : 0
+  ]
+);
       return result.insertId;
     } catch (error) {
       console.error("[AddressModel.createAddress Error]:", error.message);
