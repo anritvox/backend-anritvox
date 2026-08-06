@@ -52,15 +52,23 @@ LIMIT 1
       [userId]
     );
 
-    return rows.map((r) => {
-      // FIX: Ensure pure 0 value overrides original price correctly
-      const activePrice = (r.discount_price !== null && r.discount_price !== "") ? r.discount_price : r.price;
-      return {
-        ...r,
-        unit_price: parseFloat(activePrice),
-        subtotal: parseFloat(activePrice) * r.quantity,
-      };
-    });
+return rows.map((r) => {
+  const activePrice =
+    (r.discount_price !== null && r.discount_price !== "")
+      ? r.discount_price
+      : r.price;
+
+  return {
+    ...r,
+
+    image: r.image
+      ? `${process.env.R2_PUBLIC_URL}/${r.image}`
+      : null,
+
+    unit_price: parseFloat(activePrice),
+    subtotal: parseFloat(activePrice) * r.quantity,
+  };
+});
   } catch (err) {
     console.error("getCartByUser Error:", err);
     throw err;
