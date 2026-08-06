@@ -61,9 +61,9 @@ return rows.map((r) => {
   return {
     ...r,
 
-    image: r.image
-      ? `${process.env.R2_PUBLIC_URL}/${r.image}`
-      : null,
+image: r.image
+  ? `${process.env.CLOUDFRONT_BASE_URL}/${r.image}`
+  : null,
 
     unit_price: parseFloat(activePrice),
     subtotal: parseFloat(activePrice) * r.quantity,
