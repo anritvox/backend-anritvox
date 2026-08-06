@@ -39,7 +39,13 @@ const getCartByUser = async (userId) => {
       `SELECT ci.id, ci.quantity, ci.product_id, 
               p.name, p.price, p.discount_price, p.quantity AS stock,
               p.status, p.sku, p.brand,
-              (SELECT file_path FROM product_images WHERE product_id = p.id LIMIT 1) AS image
+            (
+SELECT file_path
+FROM product_images
+WHERE product_id = p.id
+ORDER BY id DESC
+LIMIT 1
+) AS image
        FROM cart_items ci
        JOIN products p ON p.id = ci.product_id
        WHERE ci.user_id = ?`,
